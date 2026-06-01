@@ -237,19 +237,6 @@ public class Geolock
         if (serverPlayer.tickCount % 100 == 0) {
             LOGGER.info("[GeoLock] Debug: onPlayerTick fired for {}, X={}, Y={}, Z={}", 
                         serverPlayer.getName().getString(), serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ());
-            try {
-                Class<?> globalPortalStorageClass = Class.forName("qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage");
-                java.lang.reflect.Method getGlobalPortalsMethod = globalPortalStorageClass.getMethod("getGlobalPortals", ServerLevel.class);
-                java.util.List<?> portals = (java.util.List<?>) getGlobalPortalsMethod.invoke(null, serverPlayer.serverLevel());
-                LOGGER.info("[GeoLock] Debug: Global portals count: {}", portals == null ? "null" : portals.size());
-                if (portals != null) {
-                    for (Object p : portals) {
-                        LOGGER.info("[GeoLock] Debug: Global portal: {}", p.toString());
-                    }
-                }
-            } catch (Exception e) {
-                LOGGER.error("[GeoLock] Debug: Failed to list global portals", e);
-            }
         }
 
         double x = serverPlayer.getX();
