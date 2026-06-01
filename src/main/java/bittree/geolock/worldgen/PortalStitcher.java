@@ -131,9 +131,8 @@ public class PortalStitcher {
                 LOGGER.info("[GeoLock] Creating native inward wrapping zone at X = +-{}", halfW);
                 int xMin = (int) -halfW;
                 int xMax = (int) halfW;
-                // Use a slightly smaller Z range to prevent potential integer overflows or chunk loader range check failures in IP
-                int zMin = -1000000;
-                int zMax = 1000000;
+                int zMin = -20000000;
+                int zMax = 20000000;
                 
                 java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
                 if (invokeAddWrappingZoneMethod == null) {
@@ -144,7 +143,7 @@ public class PortalStitcher {
                     LOGGER.info("[GeoLock] invokeAddWrappingZone feedback: {}", component.getString());
                 };
                 
-                invokeAddWrappingZoneMethod.invoke(null, level, xMin, xMax, zMin, zMax, true, feedbackConsumer);
+                invokeAddWrappingZoneMethod.invoke(null, level, xMin, zMin, xMax, zMax, true, feedbackConsumer);
                 
                 // Let's query wrapping zones again to see if they got added successfully
                 List<?> newZones = (List<?>) getWrappingZonesMethod.invoke(null, level);
