@@ -10,6 +10,14 @@ group = mod_group_id
 
 repositories {
     mavenLocal()
+    mavenCentral()
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
 }
 
 base {
@@ -96,6 +104,19 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
+    // Terralith v2.5.8 (Modrinth API)
+    implementation "maven.modrinth:terralith:2.5.8"
+
+    // Tectonic v3.0.22-neoforge-21.1
+    implementation "maven.modrinth:tectonic:3.0.22-neoforge-21.1"
+
+    // Local runtime mods (KubeJS and Immersive Portals)
+    implementation files("libs/kubejs-neoforge-2101.7.2-build.368.jar")
+    implementation files("libs/immersive_portals-6.0.7-all.jar")
+    implementation files("libs/rhino.jar")
+    implementation files("libs/lithostitched.jar")
+    implementation files("libs/cloth-config.jar")
+
     // Example mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"

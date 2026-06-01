@@ -31,6 +31,16 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import org.slf4j.Logger;
+import bittree.geolock.registry.GeoNoiseRegistry;
+import bittree.geolock.worldgen.PortalStitcher;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import qouteall.imm_ptl.core.api.PortalAPI;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
@@ -69,6 +79,9 @@ public class Geolock
     // FML will recognize some parameter types like IEventBus or ModContainer and pass them in automatically.
     public Geolock(IEventBus modEventBus, ModContainer modContainer)
     {
+        // Load server configuration
+        GeolockServerConfig.load();
+
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
@@ -78,6 +91,9 @@ public class Geolock
         ITEMS.register(modEventBus);
         // Register the Deferred Register to the mod event bus so tabs get registered
         CREATIVE_MODE_TABS.register(modEventBus);
+        
+        // Register custom density functions
+        GeoNoiseRegistry.register(modEventBus);
 
         // Register ourselves for server and other game events we are interested in.
         // Note that this is necessary if and only if we want *this* class (Geolock) to respond directly to events.
@@ -117,6 +133,62 @@ public class Geolock
     {
         // Do something when the server starts
         LOGGER.info("HELLO from server starting");
+    }
+
+    @SubscribeEvent
+    public void onLevelLoad(LevelEvent.Load event)
+    {
+        if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
+            PortalStitcher.stitchOverworld(serverLevel);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerTick(PlayerTickEvent.Post event)
+    {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return;
+        }
+
+        net.minecraft.world.entity.player.Player player = event.getEntity();
+        if (player.level().isClientSide() || !(player instanceof ServerPlayer serverPlayer)) {
+            return;
+        }
+
+        double x = serverPlayer.getX();
+        double w = GeolockServerConfig.worldBoundaryWidth;
+        double halfW = w / 2.0;
+        double buffer = GeolockServerConfig.teleportBufferZone;
+
+        boolean needTeleport = false;
+        double targetX = x;
+        double threshold = halfW + 16.0;
+
+        if (x > threshold) {
+            targetX = -halfW + buffer;
+            needTeleport = true;
+        } else if (x < -threshold) {
+            targetX = halfW - buffer;
+            needTeleport = true;
+        }
+
+        if (needTeleport) {
+            Entity root = serverPlayer.getRootVehicle();
+            Entity entityToTeleport = root != null ? root : serverPlayer;
+
+            try {
+                Vec3 targetPos = new Vec3(targetX, entityToTeleport.getY(), entityToTeleport.getZ());
+                if (GeolockServerConfig.logVehicleTeleports) {
+                    LOGGER.info("[GeoLock] Teleporting entity {} due to world loop from X={} to X={}", 
+                                entityToTeleport.getName().getString(), x, targetX);
+                }
+                PortalAPI.teleportEntity(entityToTeleport, (ServerLevel) serverPlayer.level(), targetPos);
+            } catch (Exception e) {
+                LOGGER.error("[GeoLock] Fallback teleport failed", e);
+                entityToTeleport.teleportTo((ServerLevel) serverPlayer.level(), targetX, entityToTeleport.getY(), entityToTeleport.getZ(), 
+                                            java.util.Collections.emptySet(), entityToTeleport.getYRot(), entityToTeleport.getXRot());
+            }
+        }
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
