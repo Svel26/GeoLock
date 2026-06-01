@@ -188,3 +188,50 @@ idea {
         downloadJavadoc = true
     }
 }
+
+tasks.register("runJavap") {
+    doLast {
+        def javaHome = System.getProperty("java.home")
+        def javapExe = new File(javaHome, "bin/javap.exe")
+        if (!javapExe.exists()) {
+            javapExe = new File(javaHome, "bin/javap")
+        }
+        exec {
+            commandLine javapExe.absolutePath, "-c", "-p", "-cp", "libs/immersive_portals-6.0.7-all.jar", "qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal"
+        }
+    }
+}
+
+tasks.register("runJavapUtf8") {
+    doLast {
+        def javaHome = System.getProperty("java.home")
+        def javapExe = new File(javaHome, "bin/javap.exe")
+        if (!javapExe.exists()) {
+            javapExe = new File(javaHome, "bin/javap")
+        }
+        def outStream = new ByteArrayOutputStream()
+        exec {
+            commandLine javapExe.absolutePath, "-c", "-p", "-cp", "libs/immersive_portals-6.0.7-all.jar", "qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal"
+            standardOutput = outStream
+        }
+        def text = outStream.toString("UTF-8")
+        def lines = text.split("\n")
+        int startIndex = -1
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].contains("invokeAddWrappingZone")) {
+                startIndex = i
+                break
+            }
+        }
+        if (startIndex != -1) {
+            println "=== invokeAddWrappingZone ==="
+            for (int i = startIndex; i < Math.min(startIndex + 150, lines.length); i++) {
+                println lines[i]
+            }
+        } else {
+            println "Could not find invokeAddWrappingZone"
+        }
+    }
+}
+
+

@@ -83,29 +83,45 @@ public class PortalStitcher {
                 throw new NoSuchMethodException("getWrappingZones method not found");
             }
             List<?> wrappingZones = (List<?>) getWrappingZonesMethod.invoke(null, level);
+            LOGGER.info("[GeoLock] Existing wrapping zones count: {}", wrappingZones == null ? "null" : wrappingZones.size());
+            
             boolean zoneMatches = false;
 
             if (wrappingZones != null && !wrappingZones.isEmpty()) {
-                Object zoneObj = wrappingZones.get(0);
-                if (wrappingZoneClass.isInstance(zoneObj)) {
-                    java.lang.reflect.Method getAreaMethod = findMethod(wrappingZoneClass, "getArea", 0);
-                    if (getAreaMethod == null) {
-                        throw new NoSuchMethodException("getArea method not found");
-                    }
-                    AABB area = (AABB) getAreaMethod.invoke(zoneObj);
-                    if (area != null) {
-                        double currentMinX = area.minX;
-                        double currentMaxX = area.maxX;
-                        if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - halfW) < 2.0) {
-                            zoneMatches = true;
-                        } else {
-                            LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected +-{}, got [{}, {}]). Removing old zone.", 
-                                        halfW, currentMinX, currentMaxX);
-                            java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
-                            if (removeFromWorldMethod == null) {
-                                throw new NoSuchMethodException("removeFromWorld method not found");
+                for (int i = 0; i < wrappingZones.size(); i++) {
+                    Object zoneObj = wrappingZones.get(i);
+                    if (wrappingZoneClass.isInstance(zoneObj)) {
+                        java.lang.reflect.Method getAreaMethod = findMethod(wrappingZoneClass, "getArea", 0);
+                        if (getAreaMethod == null) {
+                            throw new NoSuchMethodException("getArea method not found");
+                        }
+                        AABB area = (AABB) getAreaMethod.invoke(zoneObj);
+                        
+                        // Let's inspect portals list in the zone
+                        java.lang.reflect.Field portalsField = wrappingZoneClass.getField("portals");
+                        List<?> zonePortals = (List<?>) portalsField.get(zoneObj);
+                        LOGGER.info("[GeoLock] Wrapping zone [{}]: area={}, portalsCount={}", 
+                                    i, area, zonePortals == null ? "null" : zonePortals.size());
+                        if (zonePortals != null) {
+                            for (Object p : zonePortals) {
+                                LOGGER.info("[GeoLock]   Portal: {}", p);
                             }
-                            removeFromWorldMethod.invoke(zoneObj);
+                        }
+
+                        if (area != null) {
+                            double currentMinX = area.minX;
+                            double currentMaxX = area.maxX;
+                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - halfW) < 2.0) {
+                                zoneMatches = true;
+                            } else {
+                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected +-{}, got [{}, {}]). Removing old zone.", 
+                                            halfW, currentMinX, currentMaxX);
+                                java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
+                                if (removeFromWorldMethod == null) {
+                                    throw new NoSuchMethodException("removeFromWorld method not found");
+                                }
+                                removeFromWorldMethod.invoke(zoneObj);
+                            }
                         }
                     }
                 }
@@ -115,8 +131,9 @@ public class PortalStitcher {
                 LOGGER.info("[GeoLock] Creating native inward wrapping zone at X = +-{}", halfW);
                 int xMin = (int) -halfW;
                 int xMax = (int) halfW;
-                int zMin = -20000000;
-                int zMax = 20000000;
+                // Use a slightly smaller Z range to prevent potential integer overflows or chunk loader range check failures in IP
+                int zMin = -1000000;
+                int zMax = 1000000;
                 
                 java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
                 if (invokeAddWrappingZoneMethod == null) {
@@ -128,9 +145,23 @@ public class PortalStitcher {
                 };
                 
                 invokeAddWrappingZoneMethod.invoke(null, level, xMin, xMax, zMin, zMax, true, feedbackConsumer);
+                
+                // Let's query wrapping zones again to see if they got added successfully
+                List<?> newZones = (List<?>) getWrappingZonesMethod.invoke(null, level);
+                LOGGER.info("[GeoLock] Wrapping zones count after creation: {}", newZones == null ? "null" : newZones.size());
+                if (newZones != null && !newZones.isEmpty()) {
+                    Object zoneObj = newZones.get(0);
+                    java.lang.reflect.Field portalsField = wrappingZoneClass.getField("portals");
+                    List<?> zonePortals = (List<?>) portalsField.get(zoneObj);
+                    LOGGER.info("[GeoLock] Created wrapping zone portals count: {}", zonePortals == null ? "null" : zonePortals.size());
+                }
             } else {
                 LOGGER.info("[GeoLock] Valid native wrapping zone already exists.");
             }
+
+            // Print all global portals in GlobalPortalStorage
+            List<?> allGlobalPortals = (List<?>) getGlobalPortalsMethod.invoke(null, level);
+            LOGGER.info("[GeoLock] Total global portals in storage: {}", allGlobalPortals == null ? "null" : allGlobalPortals.size());
 
             return true;
         } catch (Exception e) {

@@ -47,6 +47,7 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.core.Holder;
 import bittree.geolock.worldgen.CylindricalNoise;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.minecraft.server.MinecraftServer;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -147,9 +148,10 @@ public class Geolock
     }
 
     @SubscribeEvent
-    public static void onLevelLoad(LevelEvent.Load event)
+    public static void onServerStarted(ServerStartedEvent event)
     {
-        if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
+        ServerLevel serverLevel = event.getServer().overworld();
+        if (serverLevel != null) {
             portalsActive = PortalStitcher.stitchOverworld(serverLevel);
             LOGGER.info("[GeoLock] Immersive Portals wrapping zone initialization status: {}", portalsActive);
         }
@@ -235,6 +237,19 @@ public class Geolock
         if (serverPlayer.tickCount % 100 == 0) {
             LOGGER.info("[GeoLock] Debug: onPlayerTick fired for {}, X={}, Y={}, Z={}", 
                         serverPlayer.getName().getString(), serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ());
+            try {
+                Class<?> globalPortalStorageClass = Class.forName("qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage");
+                java.lang.reflect.Method getGlobalPortalsMethod = globalPortalStorageClass.getMethod("getGlobalPortals", ServerLevel.class);
+                java.util.List<?> portals = (java.util.List<?>) getGlobalPortalsMethod.invoke(null, serverPlayer.serverLevel());
+                LOGGER.info("[GeoLock] Debug: Global portals count: {}", portals == null ? "null" : portals.size());
+                if (portals != null) {
+                    for (Object p : portals) {
+                        LOGGER.info("[GeoLock] Debug: Global portal: {}", p.toString());
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.error("[GeoLock] Debug: Failed to list global portals", e);
+            }
         }
 
         double x = serverPlayer.getX();
