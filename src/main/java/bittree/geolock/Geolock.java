@@ -240,12 +240,14 @@ public class Geolock
         }
 
         double x = serverPlayer.getX();
+        double z = serverPlayer.getZ();
         double w = GeolockServerConfig.worldBoundaryWidth;
         double halfW = w / 2.0;
         double buffer = GeolockServerConfig.teleportBufferZone;
 
         boolean needTeleport = false;
         double targetX = x;
+        double targetZ = z;
 
         if (x > halfW) {
             targetX = -halfW + buffer;
@@ -255,37 +257,45 @@ public class Geolock
             needTeleport = true;
         }
 
+        if (z > halfW) {
+            targetZ = -halfW + buffer;
+            needTeleport = true;
+        } else if (z < -halfW) {
+            targetZ = halfW - buffer;
+            needTeleport = true;
+        }
+
         if (needTeleport) {
             ServerLevel serverLevel = (ServerLevel) serverPlayer.level();
             Entity vehicle = serverPlayer.getVehicle();
 
             if (vehicle != null) {
                 if (GeolockServerConfig.logVehicleTeleports) {
-                    LOGGER.info("[GeoLock] Teleporting player {} and vehicle {} due to world loop from X={} to X={}", 
-                                serverPlayer.getName().getString(), vehicle.getName().getString(), x, targetX);
+                    LOGGER.info("[GeoLock] Teleporting player {} and vehicle {} due to world loop from X={}, Z={} to X={}, Z={}", 
+                                serverPlayer.getName().getString(), vehicle.getName().getString(), x, z, targetX, targetZ);
                 }
                 
                 serverPlayer.stopRiding();
                 
                 vehicle.teleportTo(
-                    serverLevel, targetX, vehicle.getY(), vehicle.getZ(), 
+                    serverLevel, targetX, vehicle.getY(), targetZ, 
                     java.util.Collections.emptySet(), vehicle.getYRot(), vehicle.getXRot()
                 );
                 
                 serverPlayer.teleportTo(
-                    serverLevel, targetX, serverPlayer.getY(), serverPlayer.getZ(), 
+                    serverLevel, targetX, serverPlayer.getY(), targetZ, 
                     java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
                 );
                 
                 serverPlayer.startRiding(vehicle, true);
             } else {
                 if (GeolockServerConfig.logVehicleTeleports) {
-                    LOGGER.info("[GeoLock] Teleporting player {} due to world loop from X={} to X={}", 
-                                serverPlayer.getName().getString(), x, targetX);
+                    LOGGER.info("[GeoLock] Teleporting player {} due to world loop from X={}, Z={} to X={}, Z={}", 
+                                serverPlayer.getName().getString(), x, z, targetX, targetZ);
                 }
                 
                 serverPlayer.teleportTo(
-                    serverLevel, targetX, serverPlayer.getY(), serverPlayer.getZ(), 
+                    serverLevel, targetX, serverPlayer.getY(), targetZ, 
                     java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
                 );
             }

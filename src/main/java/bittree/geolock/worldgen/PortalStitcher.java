@@ -111,11 +111,14 @@ public class PortalStitcher {
                         if (area != null) {
                             double currentMinX = area.minX;
                             double currentMaxX = area.maxX;
-                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - halfW) < 2.0) {
+                            double currentMinZ = area.minZ;
+                            double currentMaxZ = area.maxZ;
+                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - halfW) < 2.0 &&
+                                Math.abs(currentMinZ - (-halfW)) < 2.0 && Math.abs(currentMaxZ - halfW) < 2.0) {
                                 zoneMatches = true;
                             } else {
-                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected +-{}, got [{}, {}]). Removing old zone.", 
-                                            halfW, currentMinX, currentMaxX);
+                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected X/Z +-{}, got X=[{}, {}], Z=[{}, {}]). Removing old zone.", 
+                                            halfW, currentMinX, currentMaxX, currentMinZ, currentMaxZ);
                                 java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
                                 if (removeFromWorldMethod == null) {
                                     throw new NoSuchMethodException("removeFromWorld method not found");
@@ -131,8 +134,8 @@ public class PortalStitcher {
                 LOGGER.info("[GeoLock] Creating native inward wrapping zone at X = +-{}", halfW);
                 int xMin = (int) -halfW;
                 int xMax = (int) halfW;
-                int zMin = -20000000;
-                int zMax = 20000000;
+                int zMin = (int) -halfW;
+                int zMax = (int) halfW;
                 
                 java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
                 if (invokeAddWrappingZoneMethod == null) {
