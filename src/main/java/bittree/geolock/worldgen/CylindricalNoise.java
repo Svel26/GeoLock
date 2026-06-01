@@ -18,7 +18,6 @@ public class CylindricalNoise implements DensityFunction {
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
-    private final double radius;
 
     public static final MapCodec<CylindricalNoise> CODEC = RecordCodecBuilder.mapCodec(instance ->
         instance.group(
@@ -30,14 +29,12 @@ public class CylindricalNoise implements DensityFunction {
     public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth) {
         this.originalNoise = originalNoise;
         this.worldWidth = worldWidth;
-        this.radius = (worldWidth / 2.0) / Math.PI;
     }
 
     @Override
     public double compute(FunctionContext context) {
         double x = context.blockX();
         double y = context.blockY();
-        double z = context.blockZ();
 
         double currentWidth = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : this.worldWidth;
         double halfWidth = currentWidth / 2.0;

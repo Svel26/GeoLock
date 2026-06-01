@@ -40,7 +40,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
-import qouteall.imm_ptl.core.api.PortalAPI;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
@@ -84,6 +83,7 @@ public class Geolock
 
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
+        modEventBus.addListener(Config::onLoad);
 
         // Register the Deferred Register to the mod event bus so blocks get registered
         BLOCKS.register(modEventBus);
@@ -102,6 +102,11 @@ public class Geolock
 
         // Register the item to a creative tab
         modEventBus.addListener(this::addCreative);
+
+        // Register client events cleanly if physical client to avoid deprecation warnings
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            modEventBus.addListener(ClientModEvents::onClientSetup);
+        }
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
@@ -176,23 +181,29 @@ public class Geolock
             Entity root = serverPlayer.getRootVehicle();
             Entity entityToTeleport = root != null ? root : serverPlayer;
 
+            Vec3 targetPos = new Vec3(targetX, entityToTeleport.getY(), entityToTeleport.getZ());
+            if (GeolockServerConfig.logVehicleTeleports) {
+                LOGGER.info("[GeoLock] Teleporting entity {} due to world loop from X={} to X={}", 
+                            entityToTeleport.getName().getString(), x, targetX);
+            }
             try {
-                Vec3 targetPos = new Vec3(targetX, entityToTeleport.getY(), entityToTeleport.getZ());
-                if (GeolockServerConfig.logVehicleTeleports) {
-                    LOGGER.info("[GeoLock] Teleporting entity {} due to world loop from X={} to X={}", 
-                                entityToTeleport.getName().getString(), x, targetX);
-                }
-                PortalAPI.teleportEntity(entityToTeleport, (ServerLevel) serverPlayer.level(), targetPos);
+                Class<?> portalApiClass = Class.forName("qouteall.imm_ptl.core.api.PortalAPI");
+                java.lang.reflect.Method teleportMethod = portalApiClass.getMethod(
+                    "teleportEntity", 
+                    Entity.class, ServerLevel.class, Vec3.class
+                );
+                teleportMethod.invoke(null, entityToTeleport, (ServerLevel) serverPlayer.level(), targetPos);
             } catch (Exception e) {
-                LOGGER.error("[GeoLock] Fallback teleport failed", e);
-                entityToTeleport.teleportTo((ServerLevel) serverPlayer.level(), targetX, entityToTeleport.getY(), entityToTeleport.getZ(), 
-                                            java.util.Collections.emptySet(), entityToTeleport.getYRot(), entityToTeleport.getXRot());
+                LOGGER.error("[GeoLock] Reflective teleport failed, using fallback", e);
+                entityToTeleport.teleportTo(
+                    (ServerLevel) serverPlayer.level(), targetX, entityToTeleport.getY(), entityToTeleport.getZ(), 
+                    java.util.Collections.emptySet(), entityToTeleport.getYRot(), entityToTeleport.getXRot()
+                );
             }
         }
     }
 
-    // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
-    @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+    // Client-side initialization class (no longer annotated with deprecated @EventBusSubscriber)
     public static class ClientModEvents
     {
         @SubscribeEvent

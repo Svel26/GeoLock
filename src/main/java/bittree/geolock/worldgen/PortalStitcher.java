@@ -2,22 +2,30 @@ package bittree.geolock.worldgen;
 
 import bittree.geolock.GeolockServerConfig;
 import com.mojang.logging.LogUtils;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.Vec3;
 import org.slf4j.Logger;
 import net.minecraft.world.phys.AABB;
-import qouteall.imm_ptl.core.api.PortalAPI;
-import qouteall.imm_ptl.core.portal.Portal;
-import qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage;
-import qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class PortalStitcher {
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    private static java.lang.reflect.Method findMethod(Class<?> clazz, String name, int paramCount) {
+        for (java.lang.reflect.Method m : clazz.getMethods()) {
+            if (m.getName().equals(name) && m.getParameterCount() == paramCount) {
+                return m;
+            }
+        }
+        for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
+            if (m.getName().equals(name) && m.getParameterCount() == paramCount) {
+                m.setAccessible(true);
+                return m;
+            }
+        }
+        return null;
+    }
 
     public static void stitchOverworld(ServerLevel level) {
         if (!GeolockServerConfig.enableWorldLooping) {
@@ -30,34 +38,57 @@ public class PortalStitcher {
 
             LOGGER.info("[GeoLock] Ensuring correct world wrapping portals at X = +-{}", halfW);
 
+            // Reflection-based classes for Immersive Portals
+            Class<?> portalClass = Class.forName("qouteall.imm_ptl.core.portal.Portal");
+            Class<?> portalApiClass = Class.forName("qouteall.imm_ptl.core.api.PortalAPI");
+            Class<?> globalPortalStorageClass = Class.forName("qouteall.imm_ptl.core.portal.global_portals.GlobalPortalStorage");
+            Class<?> worldWrappingPortalClass = Class.forName("qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal");
+            Class<?> wrappingZoneClass = Class.forName("qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal$WrappingZone");
+
             // 1. Clean up any legacy standard Portal entities created at the boundaries
-            List<Portal> globalPortals = GlobalPortalStorage.getGlobalPortals(level);
+            java.lang.reflect.Method getGlobalPortalsMethod = findMethod(globalPortalStorageClass, "getGlobalPortals", 1);
+            if (getGlobalPortalsMethod == null) {
+                throw new NoSuchMethodException("getGlobalPortals method not found");
+            }
+            List<?> globalPortals = (List<?>) getGlobalPortalsMethod.invoke(null, level);
             if (globalPortals != null) {
-                List<Portal> toRemove = new ArrayList<>();
-                for (Portal portal : globalPortals) {
-                    if (portal == null) continue;
+                java.lang.reflect.Method removeGlobalPortalMethod = findMethod(portalApiClass, "removeGlobalPortal", 2);
+                if (removeGlobalPortalMethod == null) {
+                    throw new NoSuchMethodException("removeGlobalPortal method not found");
+                }
+                List<net.minecraft.world.entity.Entity> toRemove = new ArrayList<>();
+                for (Object obj : globalPortals) {
+                    if (obj == null) continue;
                     // Remove if it's a standard Portal (not a WorldWrappingPortal subclass) and matches boundary coordinates
-                    if (portal.getClass() == Portal.class) {
-                        double ox = portal.getX();
+                    if (obj.getClass() == portalClass && obj instanceof net.minecraft.world.entity.Entity entity) {
+                        double ox = entity.getX();
                         if (Math.abs(ox - halfW) < 10.0 || Math.abs(ox - (-halfW)) < 10.0) {
-                            toRemove.add(portal);
+                            toRemove.add(entity);
                         }
                     }
                 }
-                for (Portal portal : toRemove) {
-                    LOGGER.info("[GeoLock] Cleaning up legacy standard portal at X = {}", portal.getX());
-                    PortalAPI.removeGlobalPortal(level, portal);
+                for (net.minecraft.world.entity.Entity entity : toRemove) {
+                    LOGGER.info("[GeoLock] Cleaning up legacy standard portal at X = {}", entity.getX());
+                    removeGlobalPortalMethod.invoke(null, level, entity);
                 }
             }
 
             // 2. Manage the native Immersive Portals WrappingZone
-            List<?> wrappingZones = WorldWrappingPortal.getWrappingZones(level);
+            java.lang.reflect.Method getWrappingZonesMethod = findMethod(worldWrappingPortalClass, "getWrappingZones", 1);
+            if (getWrappingZonesMethod == null) {
+                throw new NoSuchMethodException("getWrappingZones method not found");
+            }
+            List<?> wrappingZones = (List<?>) getWrappingZonesMethod.invoke(null, level);
             boolean zoneMatches = false;
 
             if (wrappingZones != null && !wrappingZones.isEmpty()) {
                 Object zoneObj = wrappingZones.get(0);
-                if (zoneObj instanceof WorldWrappingPortal.WrappingZone existingZone) {
-                    AABB area = existingZone.getArea();
+                if (wrappingZoneClass.isInstance(zoneObj)) {
+                    java.lang.reflect.Method getAreaMethod = findMethod(wrappingZoneClass, "getArea", 0);
+                    if (getAreaMethod == null) {
+                        throw new NoSuchMethodException("getArea method not found");
+                    }
+                    AABB area = (AABB) getAreaMethod.invoke(zoneObj);
                     if (area != null) {
                         double currentMinX = area.minX;
                         double currentMaxX = area.maxX;
@@ -66,7 +97,11 @@ public class PortalStitcher {
                         } else {
                             LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected +-{}, got [{}, {}]). Removing old zone.", 
                                         halfW, currentMinX, currentMaxX);
-                            existingZone.removeFromWorld();
+                            java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
+                            if (removeFromWorldMethod == null) {
+                                throw new NoSuchMethodException("removeFromWorld method not found");
+                            }
+                            removeFromWorldMethod.invoke(zoneObj);
                         }
                     }
                 }
@@ -80,9 +115,17 @@ public class PortalStitcher {
                 // We set Z boundary to be extremely large (20,000,000) so it's virtually endless.
                 int zMin = -20000000;
                 int zMax = 20000000;
-                WorldWrappingPortal.invokeAddWrappingZone(level, xMin, xMax, zMin, zMax, true, component -> {
+                
+                java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
+                if (invokeAddWrappingZoneMethod == null) {
+                    throw new NoSuchMethodException("invokeAddWrappingZone method not found");
+                }
+                
+                java.util.function.Consumer<net.minecraft.network.chat.Component> feedbackConsumer = component -> {
                     LOGGER.info("[GeoLock] invokeAddWrappingZone feedback: {}", component.getString());
-                });
+                };
+                
+                invokeAddWrappingZoneMethod.invoke(null, level, xMin, xMax, zMin, zMax, true, feedbackConsumer);
             } else {
                 LOGGER.info("[GeoLock] Valid native wrapping zone already exists.");
             }
