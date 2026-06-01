@@ -46,6 +46,8 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.core.Holder;
 import bittree.geolock.worldgen.CylindricalNoise;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.minecraft.server.MinecraftServer;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
@@ -147,19 +149,25 @@ public class Geolock
     {
         if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
             PortalStitcher.stitchOverworld(serverLevel);
-            wrapOverworldNoiseRouter(serverLevel);
         }
     }
 
-    private static void wrapOverworldNoiseRouter(ServerLevel level) {
+    @SubscribeEvent
+    public static void onServerAboutToStart(ServerAboutToStartEvent event)
+    {
+        wrapOverworldNoiseRouter(event.getServer());
+    }
+
+    private static void wrapOverworldNoiseRouter(MinecraftServer server) {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
 
         try {
-            net.minecraft.world.level.chunk.ChunkGenerator generator = level.getChunkSource().getGenerator();
-            if (generator instanceof NoiseBasedChunkGenerator noiseGenerator) {
-                NoiseGeneratorSettings settings = noiseGenerator.generatorSettings().value();
+            net.minecraft.core.RegistryAccess registryAccess = server.registryAccess();
+            net.minecraft.core.Registry<NoiseGeneratorSettings> registry = registryAccess.registryOrThrow(net.minecraft.core.registries.Registries.NOISE_SETTINGS);
+            NoiseGeneratorSettings settings = registry.get(net.minecraft.world.level.levelgen.NoiseGeneratorSettings.OVERWORLD);
+            if (settings != null) {
                 NoiseRouter original = settings.noiseRouter();
                 if (original != null) {
                     double width = GeolockServerConfig.worldBoundaryWidth;
@@ -186,11 +194,11 @@ public class Geolock
                     setter.setAccessible(true);
                     setter.invoke(settings, wrapped);
                     
-                    LOGGER.info("[GeoLock] Successfully wrapped Overworld NoiseRouter with CylindricalNoise mapping.");
+                    LOGGER.info("[GeoLock] Successfully wrapped Overworld NoiseRouter in ServerAboutToStartEvent.");
                 }
             }
         } catch (Exception e) {
-            LOGGER.error("[GeoLock] Failed to wrap Overworld NoiseRouter", e);
+            LOGGER.error("[GeoLock] Failed to wrap Overworld NoiseRouter in ServerAboutToStartEvent", e);
         }
     }
 
