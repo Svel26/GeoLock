@@ -11,54 +11,48 @@ import bittree.geolock.GeolockServerConfig;
 
 /**
  * Custom Density Function for NeoForge 1.21.1.
- * Maps Cartesian coordinate queries on X to cylindrical space
- * to enforce procedurally identical boundaries.
+ * Applies bilinear blending near world boundaries to create a seamless loop
+ * without coordinate stretching, and enforces a void outside the boundary.
  */
 public class CylindricalNoise implements DensityFunction {
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
     private final double halfWidth;
-    private final double currentRadius;
-    private final double twoPiOverWidth;
+    private final boolean isFinalDensity;
 
     public static final MapCodec<CylindricalNoise> CODEC = RecordCodecBuilder.mapCodec(instance ->
         instance.group(
             DensityFunction.CODEC.fieldOf("noise").forGetter(CylindricalNoise::getOriginalNoise),
-            Codec.DOUBLE.fieldOf("world_width").forGetter(CylindricalNoise::getWorldWidth)
+            Codec.DOUBLE.fieldOf("world_width").forGetter(CylindricalNoise::getWorldWidth),
+            Codec.BOOL.optionalFieldOf("is_final_density", false).forGetter(CylindricalNoise::isFinalDensity)
         ).apply(instance, CylindricalNoise::new)
     );
 
     public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth) {
+        this(originalNoise, worldWidth, false);
+    }
+
+    public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth, boolean isFinalDensity) {
         this.originalNoise = originalNoise;
         this.worldWidth = worldWidth;
         double width = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : worldWidth;
         this.halfWidth = width / 2.0;
-        this.currentRadius = this.halfWidth / Math.PI;
-        this.twoPiOverWidth = 2.0 * Math.PI / width;
+        this.isFinalDensity = isFinalDensity;
     }
 
     @Override
     public double compute(FunctionContext context) {
-        double x = context.blockX();
-        double y = context.blockY();
-        double z = context.blockZ();
-
         if (!GeolockServerConfig.enableWorldLooping) {
             return this.originalNoise.value().compute(context);
         }
 
-        // Calculate the angular coordinate mappings
-        double thetaX = (x + this.halfWidth) * this.twoPiOverWidth;
-        double thetaZ = (z + this.halfWidth) * this.twoPiOverWidth;
+        // Outside boundary is a void for finalDensity
+        if (this.isFinalDensity && (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
+            return -1000.0;
+        }
 
-        // Project coordinate axis into wrapped cylindrical/toroidal vectors
-        double nx = this.currentRadius * net.minecraft.util.Mth.cos((float) thetaX);
-        double nz = this.currentRadius * net.minecraft.util.Mth.sin((float) thetaX) 
-                  + this.currentRadius * net.minecraft.util.Mth.cos((float) thetaZ);
-
-        // Retain standard elevation (y) and sample from the modified context
-        return this.originalNoise.value().compute(new CylindricalContext(nx, y, nz));
+        return blend(context, ctx -> this.originalNoise.value().compute(ctx));
     }
 
     @Override
@@ -68,7 +62,7 @@ public class CylindricalNoise implements DensityFunction {
 
     @Override
     public DensityFunction mapAll(Visitor visitor) {
-        return new CylindricalNoise(Holder.direct(this.originalNoise.value().mapAll(visitor)), this.worldWidth);
+        return new CylindricalNoise(Holder.direct(this.originalNoise.value().mapAll(visitor)), this.worldWidth, this.isFinalDensity);
     }
 
     @Override
@@ -88,47 +82,90 @@ public class CylindricalNoise implements DensityFunction {
 
     public Holder<DensityFunction> getOriginalNoise() { return this.originalNoise; }
     public double getWorldWidth() { return this.worldWidth; }
+    public boolean isFinalDensity() { return this.isFinalDensity; }
 
-    private static boolean staticInitialized = false;
-    private static double staticHalfWidth;
-    private static double staticCurrentRadius;
-    private static double staticTwoPiOverWidth;
-
-    private static void initStatic() {
-        if (!staticInitialized) {
-            double width = GeolockServerConfig.worldBoundaryWidth;
-            staticHalfWidth = width / 2.0;
-            staticCurrentRadius = staticHalfWidth / Math.PI;
-            staticTwoPiOverWidth = 2.0 * Math.PI / width;
-            staticInitialized = true;
+    public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return evaluator.applyAsDouble(context);
         }
+
+        double x = context.blockX();
+        double z = context.blockZ();
+        double width = GeolockServerConfig.worldBoundaryWidth;
+        double halfW = width / 2.0;
+        double blendW = 1000.0;
+
+        double tx = 0.0;
+        double tz = 0.0;
+
+        if (x > halfW - blendW) {
+            tx = (x - (halfW - blendW)) / blendW;
+        } else if (x < -halfW + blendW) {
+            tx = (-halfW + blendW - x) / blendW;
+        }
+
+        if (z > halfW - blendW) {
+            tz = (z - (halfW - blendW)) / blendW;
+        } else if (z < -halfW + blendW) {
+            tz = (-halfW + blendW - z) / blendW;
+        }
+
+        if (tx == 0.0 && tz == 0.0) {
+            return evaluator.applyAsDouble(context);
+        }
+
+        double offsetX = (x > 0) ? -width : width;
+        double offsetZ = (z > 0) ? -width : width;
+
+        FunctionContext context00 = context;
+        FunctionContext context10 = tx > 0.0 ? new OffsetContext(context, offsetX, 0) : context;
+        FunctionContext context01 = tz > 0.0 ? new OffsetContext(context, 0, offsetZ) : context;
+        FunctionContext context11 = (tx > 0.0 && tz > 0.0) ? new OffsetContext(context, offsetX, offsetZ) : context;
+
+        double v00 = evaluator.applyAsDouble(context00);
+
+        double v10 = v00;
+        if (tx > 0.0) {
+            v10 = evaluator.applyAsDouble(context10);
+        }
+
+        double v01 = v00;
+        if (tz > 0.0) {
+            v01 = evaluator.applyAsDouble(context01);
+        }
+
+        double v11 = v00;
+        if (tx > 0.0 && tz > 0.0) {
+            v11 = evaluator.applyAsDouble(context11);
+        }
+
+        return (1.0 - tx) * (1.0 - tz) * v00 
+             + tx * (1.0 - tz) * v10 
+             + (1.0 - tx) * tz * v01 
+             + tx * tz * v11;
     }
 
     public static int getWrappedX(int x, int z) {
-        if (!GeolockServerConfig.enableWorldLooping) {
-            return x;
-        }
-        initStatic();
-        double thetaX = (x + staticHalfWidth) * staticTwoPiOverWidth;
-        double nx = staticCurrentRadius * net.minecraft.util.Mth.cos((float) thetaX);
-        return (int) Math.round(nx);
+        return x;
     }
 
     public static int getWrappedZ(int x, int z) {
-        if (!GeolockServerConfig.enableWorldLooping) {
-            return z;
-        }
-        initStatic();
-        double thetaX = (x + staticHalfWidth) * staticTwoPiOverWidth;
-        double thetaZ = (z + staticHalfWidth) * staticTwoPiOverWidth;
-        double nz = staticCurrentRadius * net.minecraft.util.Mth.sin((float) thetaX) 
-                  + staticCurrentRadius * net.minecraft.util.Mth.cos((float) thetaZ);
-        return (int) Math.round(nz);
+        return z;
     }
 
-    private record CylindricalContext(double xDouble, double yDouble, double zDouble) implements FunctionContext {
-        @Override public int blockX() { return (int) Math.round(xDouble); }
-        @Override public int blockY() { return (int) Math.round(yDouble); }
-        @Override public int blockZ() { return (int) Math.round(zDouble); }
+    public static class OffsetContext implements FunctionContext {
+        private final FunctionContext original;
+        private final double offsetX;
+        private final double offsetZ;
+
+        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+            this.original = original;
+            this.offsetX = offsetX;
+            this.offsetZ = offsetZ;
+        }
+
+        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
+        @Override public int blockY() { return original.blockY(); }
+        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
     }
 }

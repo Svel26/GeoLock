@@ -187,21 +187,21 @@ public class Geolock
                 if (original != null) {
                     double width = GeolockServerConfig.worldBoundaryWidth;
                     NoiseRouter wrapped = new NoiseRouter(
-                        wrapDensityFunction(original.barrierNoise(), width),
-                        wrapDensityFunction(original.fluidLevelFloodednessNoise(), width),
-                        wrapDensityFunction(original.fluidLevelSpreadNoise(), width),
-                        wrapDensityFunction(original.lavaNoise(), width),
-                        wrapDensityFunction(original.temperature(), width),
-                        wrapDensityFunction(original.vegetation(), width),
-                        wrapDensityFunction(original.continents(), width),
-                        wrapDensityFunction(original.erosion(), width),
-                        wrapDensityFunction(original.depth(), width),
-                        wrapDensityFunction(original.ridges(), width),
-                        wrapDensityFunction(original.initialDensityWithoutJaggedness(), width),
-                        wrapDensityFunction(original.finalDensity(), width),
-                        wrapDensityFunction(original.veinToggle(), width),
-                        wrapDensityFunction(original.veinRidged(), width),
-                        wrapDensityFunction(original.veinGap(), width)
+                        wrapDensityFunction(original.barrierNoise(), width, false),
+                        wrapDensityFunction(original.fluidLevelFloodednessNoise(), width, false),
+                        wrapDensityFunction(original.fluidLevelSpreadNoise(), width, false),
+                        wrapDensityFunction(original.lavaNoise(), width, false),
+                        wrapDensityFunction(original.temperature(), width, false),
+                        wrapDensityFunction(original.vegetation(), width, false),
+                        wrapDensityFunction(original.continents(), width, false),
+                        wrapDensityFunction(original.erosion(), width, false),
+                        wrapDensityFunction(original.depth(), width, false),
+                        wrapDensityFunction(original.ridges(), width, false),
+                        wrapDensityFunction(original.initialDensityWithoutJaggedness(), width, false),
+                        wrapDensityFunction(original.finalDensity(), width, true),
+                        wrapDensityFunction(original.veinToggle(), width, false),
+                        wrapDensityFunction(original.veinRidged(), width, false),
+                        wrapDensityFunction(original.veinGap(), width, false)
                     );
                     
                     // Reflectively invoke setNoiseRouter(wrapped)
@@ -217,11 +217,11 @@ public class Geolock
         }
     }
 
-    private static DensityFunction wrapDensityFunction(DensityFunction original, double width) {
+    private static DensityFunction wrapDensityFunction(DensityFunction original, double width, boolean isFinalDensity) {
         if (original == null) {
             return null;
         }
-        return new CylindricalNoise(Holder.direct(original), width);
+        return new CylindricalNoise(Holder.direct(original), width, isFinalDensity);
     }
 
     @SubscribeEvent
