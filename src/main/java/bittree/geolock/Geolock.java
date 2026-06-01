@@ -49,6 +49,7 @@ import bittree.geolock.worldgen.CylindricalNoise;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
+@EventBusSubscriber(modid = Geolock.MODID)
 public class Geolock
 {
     // Define mod id in a common place for everything to reference
@@ -101,11 +102,6 @@ public class Geolock
         // Register custom density functions
         GeoNoiseRegistry.register(modEventBus);
 
-        // Register ourselves for server and other game events we are interested in.
-        // Note that this is necessary if and only if we want *this* class (Geolock) to respond directly to events.
-        // Do not add this line if there are no @SubscribeEvent-annotated functions in this class, like onServerStarting() below.
-        NeoForge.EVENT_BUS.register(this);
-
         // Register the item to a creative tab
         modEventBus.addListener(this::addCreative);
 
@@ -140,14 +136,14 @@ public class Geolock
 
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event)
+    public static void onServerStarting(ServerStartingEvent event)
     {
         // Do something when the server starts
         LOGGER.info("HELLO from server starting");
     }
 
     @SubscribeEvent
-    public void onLevelLoad(LevelEvent.Load event)
+    public static void onLevelLoad(LevelEvent.Load event)
     {
         if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
             PortalStitcher.stitchOverworld(serverLevel);
@@ -155,7 +151,7 @@ public class Geolock
         }
     }
 
-    private void wrapOverworldNoiseRouter(ServerLevel level) {
+    private static void wrapOverworldNoiseRouter(ServerLevel level) {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
@@ -198,7 +194,7 @@ public class Geolock
         }
     }
 
-    private DensityFunction wrapDensityFunction(DensityFunction original, double width) {
+    private static DensityFunction wrapDensityFunction(DensityFunction original, double width) {
         if (original == null) {
             return null;
         }
@@ -206,7 +202,7 @@ public class Geolock
     }
 
     @SubscribeEvent
-    public void onPlayerTick(PlayerTickEvent.Post event)
+    public static void onPlayerTick(PlayerTickEvent.Post event)
     {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
@@ -219,6 +215,11 @@ public class Geolock
 
         if (serverPlayer.level().dimension() != Level.OVERWORLD) {
             return;
+        }
+
+        if (serverPlayer.tickCount % 100 == 0) {
+            LOGGER.info("[GeoLock] Debug: onPlayerTick fired for {}, X={}, Y={}, Z={}", 
+                        serverPlayer.getName().getString(), serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ());
         }
 
         double x = serverPlayer.getX();
