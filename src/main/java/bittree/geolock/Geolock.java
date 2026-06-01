@@ -56,6 +56,8 @@ public class Geolock
 {
     // Define mod id in a common place for everything to reference
     public static final String MODID = "geolock";
+    // Track if Immersive Portals are active at runtime
+    public static boolean portalsActive = false;
     // Directly reference a slf4j logger
     private static final Logger LOGGER = LogUtils.getLogger();
     // Create a Deferred Register to hold Blocks which will all be registered under the "geolock" namespace
@@ -148,7 +150,8 @@ public class Geolock
     public static void onLevelLoad(LevelEvent.Load event)
     {
         if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
-            PortalStitcher.stitchOverworld(serverLevel);
+            portalsActive = PortalStitcher.stitchOverworld(serverLevel);
+            LOGGER.info("[GeoLock] Immersive Portals wrapping zone initialization status: {}", portalsActive);
         }
     }
 
@@ -213,6 +216,10 @@ public class Geolock
     public static void onPlayerTick(PlayerTickEvent.Post event)
     {
         if (!GeolockServerConfig.enableWorldLooping) {
+            return;
+        }
+
+        if (portalsActive) {
             return;
         }
 
