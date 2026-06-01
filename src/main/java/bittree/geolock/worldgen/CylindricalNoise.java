@@ -35,6 +35,7 @@ public class CylindricalNoise implements DensityFunction {
     public double compute(FunctionContext context) {
         double x = context.blockX();
         double y = context.blockY();
+        double z = context.blockZ();
 
         double currentWidth = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : this.worldWidth;
         double halfWidth = currentWidth / 2.0;
@@ -45,7 +46,7 @@ public class CylindricalNoise implements DensityFunction {
 
         // Project coordinate axis into wrapped cylindrical vectors
         double nx = currentRadius * Math.cos(theta);
-        double nz = currentRadius * Math.sin(theta);
+        double nz = currentRadius * Math.sin(theta) + z;
 
         // Retain standard elevation (y) and sample from the modified context
         return this.originalNoise.value().compute(new CylindricalContext(nx, y, nz));

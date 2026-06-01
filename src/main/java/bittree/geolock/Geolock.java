@@ -40,6 +40,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.minecraft.world.level.levelgen.NoiseRouter;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.DensityFunction;
+import net.minecraft.core.Holder;
+import bittree.geolock.worldgen.CylindricalNoise;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
@@ -145,7 +151,58 @@ public class Geolock
     {
         if (event.getLevel() instanceof ServerLevel serverLevel && serverLevel.dimension() == Level.OVERWORLD) {
             PortalStitcher.stitchOverworld(serverLevel);
+            wrapOverworldNoiseRouter(serverLevel);
         }
+    }
+
+    private void wrapOverworldNoiseRouter(ServerLevel level) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return;
+        }
+
+        try {
+            net.minecraft.world.level.chunk.ChunkGenerator generator = level.getChunkSource().getGenerator();
+            if (generator instanceof NoiseBasedChunkGenerator noiseGenerator) {
+                NoiseGeneratorSettings settings = noiseGenerator.generatorSettings().value();
+                NoiseRouter original = settings.noiseRouter();
+                if (original != null) {
+                    double width = GeolockServerConfig.worldBoundaryWidth;
+                    NoiseRouter wrapped = new NoiseRouter(
+                        wrapDensityFunction(original.barrierNoise(), width),
+                        wrapDensityFunction(original.fluidLevelFloodednessNoise(), width),
+                        wrapDensityFunction(original.fluidLevelSpreadNoise(), width),
+                        wrapDensityFunction(original.lavaNoise(), width),
+                        wrapDensityFunction(original.temperature(), width),
+                        wrapDensityFunction(original.vegetation(), width),
+                        wrapDensityFunction(original.continents(), width),
+                        wrapDensityFunction(original.erosion(), width),
+                        wrapDensityFunction(original.depth(), width),
+                        wrapDensityFunction(original.ridges(), width),
+                        wrapDensityFunction(original.initialDensityWithoutJaggedness(), width),
+                        wrapDensityFunction(original.finalDensity(), width),
+                        wrapDensityFunction(original.veinToggle(), width),
+                        wrapDensityFunction(original.veinRidged(), width),
+                        wrapDensityFunction(original.veinGap(), width)
+                    );
+                    
+                    // Reflectively invoke setNoiseRouter(wrapped)
+                    java.lang.reflect.Method setter = NoiseGeneratorSettings.class.getDeclaredMethod("setNoiseRouter", NoiseRouter.class);
+                    setter.setAccessible(true);
+                    setter.invoke(settings, wrapped);
+                    
+                    LOGGER.info("[GeoLock] Successfully wrapped Overworld NoiseRouter with CylindricalNoise mapping.");
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("[GeoLock] Failed to wrap Overworld NoiseRouter", e);
+        }
+    }
+
+    private DensityFunction wrapDensityFunction(DensityFunction original, double width) {
+        if (original == null) {
+            return null;
+        }
+        return new CylindricalNoise(Holder.direct(original), width);
     }
 
     @SubscribeEvent
@@ -160,6 +217,10 @@ public class Geolock
             return;
         }
 
+        if (serverPlayer.level().dimension() != Level.OVERWORLD) {
+            return;
+        }
+
         double x = serverPlayer.getX();
         double w = GeolockServerConfig.worldBoundaryWidth;
         double halfW = w / 2.0;
@@ -167,37 +228,47 @@ public class Geolock
 
         boolean needTeleport = false;
         double targetX = x;
-        double threshold = halfW + 16.0;
 
-        if (x > threshold) {
+        if (x > halfW) {
             targetX = -halfW + buffer;
             needTeleport = true;
-        } else if (x < -threshold) {
+        } else if (x < -halfW) {
             targetX = halfW - buffer;
             needTeleport = true;
         }
 
         if (needTeleport) {
-            Entity root = serverPlayer.getRootVehicle();
-            Entity entityToTeleport = root != null ? root : serverPlayer;
+            ServerLevel serverLevel = (ServerLevel) serverPlayer.level();
+            Entity vehicle = serverPlayer.getVehicle();
 
-            Vec3 targetPos = new Vec3(targetX, entityToTeleport.getY(), entityToTeleport.getZ());
-            if (GeolockServerConfig.logVehicleTeleports) {
-                LOGGER.info("[GeoLock] Teleporting entity {} due to world loop from X={} to X={}", 
-                            entityToTeleport.getName().getString(), x, targetX);
-            }
-            try {
-                Class<?> portalApiClass = Class.forName("qouteall.imm_ptl.core.api.PortalAPI");
-                java.lang.reflect.Method teleportMethod = portalApiClass.getMethod(
-                    "teleportEntity", 
-                    Entity.class, ServerLevel.class, Vec3.class
+            if (vehicle != null) {
+                if (GeolockServerConfig.logVehicleTeleports) {
+                    LOGGER.info("[GeoLock] Teleporting player {} and vehicle {} due to world loop from X={} to X={}", 
+                                serverPlayer.getName().getString(), vehicle.getName().getString(), x, targetX);
+                }
+                
+                serverPlayer.stopRiding();
+                
+                vehicle.teleportTo(
+                    serverLevel, targetX, vehicle.getY(), vehicle.getZ(), 
+                    java.util.Collections.emptySet(), vehicle.getYRot(), vehicle.getXRot()
                 );
-                teleportMethod.invoke(null, entityToTeleport, (ServerLevel) serverPlayer.level(), targetPos);
-            } catch (Exception e) {
-                LOGGER.error("[GeoLock] Reflective teleport failed, using fallback", e);
-                entityToTeleport.teleportTo(
-                    (ServerLevel) serverPlayer.level(), targetX, entityToTeleport.getY(), entityToTeleport.getZ(), 
-                    java.util.Collections.emptySet(), entityToTeleport.getYRot(), entityToTeleport.getXRot()
+                
+                serverPlayer.teleportTo(
+                    serverLevel, targetX, serverPlayer.getY(), serverPlayer.getZ(), 
+                    java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
+                );
+                
+                serverPlayer.startRiding(vehicle, true);
+            } else {
+                if (GeolockServerConfig.logVehicleTeleports) {
+                    LOGGER.info("[GeoLock] Teleporting player {} due to world loop from X={} to X={}", 
+                                serverPlayer.getName().getString(), x, targetX);
+                }
+                
+                serverPlayer.teleportTo(
+                    serverLevel, targetX, serverPlayer.getY(), serverPlayer.getZ(), 
+                    java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
                 );
             }
         }
