@@ -27,7 +27,7 @@ public class WeirdScaledSamplerDensityFunctionMixin {
 
         IN_COMPUTE.set(true);
         try {
-            cir.setReturnValue(CylindricalNoise.blend(context, ctx -> 
+            cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
                 this.transform(ctx, inputVal)
             ));
         } finally {

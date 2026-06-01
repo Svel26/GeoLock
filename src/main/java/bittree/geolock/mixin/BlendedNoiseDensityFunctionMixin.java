@@ -22,7 +22,7 @@ public class BlendedNoiseDensityFunctionMixin {
 
         IN_COMPUTE.set(true);
         try {
-            cir.setReturnValue(CylindricalNoise.blend(context, ctx -> 
+            cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
                 ((BlendedNoise) (Object) this).compute(ctx)
             ));
         } finally {

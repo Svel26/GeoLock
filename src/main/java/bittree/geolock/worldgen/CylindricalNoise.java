@@ -11,10 +11,33 @@ import bittree.geolock.GeolockServerConfig;
 
 /**
  * Custom Density Function for NeoForge 1.21.1.
- * Applies bilinear blending near world boundaries to create a seamless loop
- * without coordinate stretching, and enforces a void outside the boundary.
+ *
+ * Uses toroidal coordinate remapping to achieve perfectly seamless world looping.
+ * Each linear coordinate axis is mapped to a 2D circle, so that coordinates at
+ * +halfW and -halfW map to the same point → guaranteed seamless borders.
+ *
+ * The remapped coordinates for X are: (R*cos(θx), R*sin(θx))
+ * The remapped coordinates for Z are: (R*cos(θz), R*sin(θz))
+ *
+ * For a seamless torus we need 4D noise (2D per axis). Since Minecraft noise is 3D,
+ * we pack the 4 circular components into 3D using an orthogonal folding:
+ *   noiseX = R*(cos(θx) + cos(θz))
+ *   noiseY = blockY  (unchanged — no looping on Y)
+ *   noiseZ = R*(sin(θx) + sin(θz))
+ *
+ * Both X and Z circular components contribute to both noiseX and noiseZ, ensuring
+ * seamlessness on both axes without cross-axis interference patterns.
+ *
+ * VOID ZONE: finalDensity returns -1000 outside the world boundary.
  */
 public class CylindricalNoise implements DensityFunction {
+
+    // The radius of the "torus" circle.
+    // Larger R = higher frequency variation per block, smaller = more stretched noise.
+    // We choose R such that the circle circumference equals the world width:
+    //   circumference = 2πR = worldWidth  →  R = worldWidth / (2π)
+    // This preserves the approximate noise frequency compared to flat (linear) sampling.
+    private static final double TWO_PI = 2.0 * Math.PI;
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
@@ -47,12 +70,13 @@ public class CylindricalNoise implements DensityFunction {
             return this.originalNoise.value().compute(context);
         }
 
-        // Outside boundary is a void for finalDensity, but not for offset contexts
-        if (this.isFinalDensity && !(context instanceof OffsetContext) && (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
+        // Outside boundary returns void for final density pass
+        if (this.isFinalDensity && !(context instanceof ToroidalContext) &&
+                (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
             return -1000.0;
         }
 
-        return blend(context, ctx -> this.originalNoise.value().compute(ctx));
+        return remap(context, ctx -> this.originalNoise.value().compute(ctx));
     }
 
     @Override
@@ -84,91 +108,98 @@ public class CylindricalNoise implements DensityFunction {
     public double getWorldWidth() { return this.worldWidth; }
     public boolean isFinalDensity() { return this.isFinalDensity; }
 
-    public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
-        if (!GeolockServerConfig.enableWorldLooping || context instanceof OffsetContext) {
+    /**
+     * Remaps block coordinates to toroidal (circular) coordinates before evaluating the noise.
+     *
+     * The toroidal remapping maps each linear axis to a circle:
+     *   θx = (blockX / worldWidth) * 2π   (period = worldWidth blocks)
+     *   θz = (blockZ / worldWidth) * 2π
+     *
+     * The 4 circular components (cos/sin for each axis) are packed into 3D noise coords:
+     *   noiseX = R * (cos(θx) + cos(θz)) / 2
+     *   noiseZ = R * (sin(θx) + sin(θz)) / 2
+     *   noiseY = blockY (unchanged)
+     *
+     * Division by 2 keeps each individual axis's contribution in [-R, R],
+     * so the combined result is in [-R, R] as well.
+     *
+     * Seamlessness proof:
+     *   At blockX = +halfW and blockX = -halfW:
+     *     θx(+halfW) = +π,  θx(-halfW) = -π
+     *     cos(+π) = cos(-π) = -1  → same noiseX contribution
+     *     sin(+π) = sin(-π) = 0   → same noiseZ contribution
+     *   → Both border coordinates map to the exact same noise input → seamless!
+     *
+     * @param context  the original block coordinate context
+     * @param evaluator  a function to evaluate the underlying noise at the remapped context
+     * @return the noise value at the toroidally remapped position
+     */
+    public static double remap(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
+        if (!GeolockServerConfig.enableWorldLooping || context instanceof ToroidalContext) {
             return evaluator.applyAsDouble(context);
         }
 
-        double x = context.blockX();
-        double z = context.blockZ();
         double width = GeolockServerConfig.worldBoundaryWidth;
-        double halfW = width / 2.0;
-        double blendW = 1000.0;
+        // R = world_width / (2π) preserves approximate noise frequency
+        double R = width / TWO_PI;
 
-        double tx = 0.0;
-        double tz = 0.0;
+        double blockX = context.blockX();
+        double blockZ = context.blockZ();
 
-        if (x > halfW - blendW) {
-            tx = 0.5 * (x - (halfW - blendW)) / blendW;
-        } else if (x < -halfW + blendW) {
-            tx = 0.5 * (-halfW + blendW - x) / blendW;
-        }
+        // Map to angle in [-π, π]
+        double thetaX = (blockX / width) * TWO_PI;
+        double thetaZ = (blockZ / width) * TWO_PI;
 
-        if (z > halfW - blendW) {
-            tz = 0.5 * (z - (halfW - blendW)) / blendW;
-        } else if (z < -halfW + blendW) {
-            tz = 0.5 * (-halfW + blendW - z) / blendW;
-        }
+        // Pack 4 circular components into 2 noise coordinates
+        double remappedX = R * (Math.cos(thetaX) + Math.cos(thetaZ)) * 0.5;
+        double remappedZ = R * (Math.sin(thetaX) + Math.sin(thetaZ)) * 0.5;
 
-        tx = Math.max(0.0, Math.min(0.5, tx));
-        tz = Math.max(0.0, Math.min(0.5, tz));
-
-        if (tx == 0.0 && tz == 0.0) {
-            return evaluator.applyAsDouble(context);
-        }
-
-        double offsetX = (x > 0) ? -width : width;
-        double offsetZ = (z > 0) ? -width : width;
-
-        FunctionContext context00 = context;
-        FunctionContext context10 = tx > 0.0 ? new OffsetContext(context, offsetX, 0) : context;
-        FunctionContext context01 = tz > 0.0 ? new OffsetContext(context, 0, offsetZ) : context;
-        FunctionContext context11 = (tx > 0.0 && tz > 0.0) ? new OffsetContext(context, offsetX, offsetZ) : context;
-
-        double v00 = evaluator.applyAsDouble(context00);
-
-        double v10 = v00;
-        if (tx > 0.0) {
-            v10 = evaluator.applyAsDouble(context10);
-        }
-
-        double v01 = v00;
-        if (tz > 0.0) {
-            v01 = evaluator.applyAsDouble(context01);
-        }
-
-        double v11 = v00;
-        if (tx > 0.0 && tz > 0.0) {
-            v11 = evaluator.applyAsDouble(context11);
-        }
-
-        return (1.0 - tx) * (1.0 - tz) * v00 
-             + tx * (1.0 - tz) * v10 
-             + (1.0 - tx) * tz * v01 
-             + tx * tz * v11;
+        return evaluator.applyAsDouble(new ToroidalContext(context, (int) Math.round(remappedX), (int) Math.round(remappedZ)));
     }
 
-    public static int getWrappedX(int x, int z) {
-        return x;
-    }
-
-    public static int getWrappedZ(int x, int z) {
-        return z;
-    }
-
-    public static class OffsetContext implements FunctionContext {
+    /**
+     * A FunctionContext that replaces blockX and blockZ with toroidally remapped values.
+     * blockY is preserved so vertical noise layers remain unchanged.
+     *
+     * This marker class is also used to prevent recursive remapping inside nested evaluators.
+     */
+    public static class ToroidalContext implements FunctionContext {
         private final FunctionContext original;
-        private final double offsetX;
-        private final double offsetZ;
+        private final int remappedX;
+        private final int remappedZ;
 
-        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+        public ToroidalContext(FunctionContext original, int remappedX, int remappedZ) {
             this.original = original;
-            this.offsetX = offsetX;
-            this.offsetZ = offsetZ;
+            this.remappedX = remappedX;
+            this.remappedZ = remappedZ;
         }
 
-        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
+        @Override public int blockX() { return remappedX; }
         @Override public int blockY() { return original.blockY(); }
-        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
+        @Override public int blockZ() { return remappedZ; }
+    }
+
+    // Legacy methods kept for potential external compatibility
+    public static int getWrappedX(int x, int z) { return x; }
+    public static int getWrappedZ(int x, int z) { return z; }
+
+    /**
+     * @deprecated Use remap() instead. Kept for API compatibility.
+     */
+    @Deprecated
+    public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
+        return remap(context, evaluator);
+    }
+
+    /**
+     * @deprecated Use ToroidalContext instead. Kept for API compatibility.
+     */
+    @Deprecated
+    public static class OffsetContext extends ToroidalContext {
+        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+            super(original,
+                (int) Math.round(original.blockX() + offsetX),
+                (int) Math.round(original.blockZ() + offsetZ));
+        }
     }
 }

@@ -18,7 +18,7 @@ public class ShiftADensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(CylindricalNoise.blend(context, ctx -> 
+        cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
             this.offsetNoise.getValue((double)ctx.blockX() * 0.25D, 0.0D, (double)ctx.blockZ() * 0.25D) * 4.0D
         ));
     }

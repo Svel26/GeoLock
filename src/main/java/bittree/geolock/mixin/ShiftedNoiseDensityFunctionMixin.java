@@ -23,7 +23,7 @@ public class ShiftedNoiseDensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(CylindricalNoise.blend(context, ctx -> {
+        cir.setReturnValue(CylindricalNoise.remap(context, ctx -> {
             double sx = this.shiftX.compute(ctx);
             double sy = this.shiftY.compute(ctx);
             double sz = this.shiftZ.compute(ctx);

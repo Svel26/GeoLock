@@ -20,7 +20,7 @@ public class NoiseDensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(CylindricalNoise.blend(context, ctx -> 
+        cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
             this.noise.getValue((double)ctx.blockX() * this.xzScale, (double)ctx.blockY() * this.yScale, (double)ctx.blockZ() * this.xzScale)
         ));
     }
