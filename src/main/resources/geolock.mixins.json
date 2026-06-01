@@ -8,7 +8,9 @@
     "ShiftedNoiseDensityFunctionMixin",
     "ShiftDensityFunctionMixin",
     "ShiftADensityFunctionMixin",
-    "ShiftBDensityFunctionMixin"
+    "ShiftBDensityFunctionMixin",
+    "BlendedNoiseDensityFunctionMixin",
+    "WeirdScaledSamplerDensityFunctionMixin"
   ],
   "client": [
   ],

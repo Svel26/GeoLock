@@ -47,8 +47,8 @@ public class CylindricalNoise implements DensityFunction {
             return this.originalNoise.value().compute(context);
         }
 
-        // Outside boundary is a void for finalDensity
-        if (this.isFinalDensity && (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
+        // Outside boundary is a void for finalDensity, but not for offset contexts
+        if (this.isFinalDensity && !(context instanceof OffsetContext) && (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
             return -1000.0;
         }
 
@@ -85,7 +85,7 @@ public class CylindricalNoise implements DensityFunction {
     public boolean isFinalDensity() { return this.isFinalDensity; }
 
     public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
-        if (!GeolockServerConfig.enableWorldLooping) {
+        if (!GeolockServerConfig.enableWorldLooping || context instanceof OffsetContext) {
             return evaluator.applyAsDouble(context);
         }
 
@@ -99,16 +99,19 @@ public class CylindricalNoise implements DensityFunction {
         double tz = 0.0;
 
         if (x > halfW - blendW) {
-            tx = (x - (halfW - blendW)) / blendW;
+            tx = 0.5 * (x - (halfW - blendW)) / blendW;
         } else if (x < -halfW + blendW) {
-            tx = (-halfW + blendW - x) / blendW;
+            tx = 0.5 * (-halfW + blendW - x) / blendW;
         }
 
         if (z > halfW - blendW) {
-            tz = (z - (halfW - blendW)) / blendW;
+            tz = 0.5 * (z - (halfW - blendW)) / blendW;
         } else if (z < -halfW + blendW) {
-            tz = (-halfW + blendW - z) / blendW;
+            tz = 0.5 * (-halfW + blendW - z) / blendW;
         }
+
+        tx = Math.max(0.0, Math.min(0.5, tx));
+        tz = Math.max(0.0, Math.min(0.5, tz));
 
         if (tx == 0.0 && tz == 0.0) {
             return evaluator.applyAsDouble(context);

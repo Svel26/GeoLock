@@ -164,6 +164,22 @@ public class Geolock
         if (serverLevel != null) {
             portalsActive = PortalStitcher.stitchOverworld(serverLevel);
             LOGGER.info("[GeoLock] Immersive Portals wrapping zone initialization status: {}", portalsActive);
+
+            try {
+                net.minecraft.world.level.chunk.ChunkGenerator generator = serverLevel.getChunkSource().getGenerator();
+                LOGGER.info("[GeoLock] Active ChunkGenerator class: {}", generator.getClass().getName());
+                if (generator instanceof NoiseBasedChunkGenerator noiseGen) {
+                    Holder<NoiseGeneratorSettings> settingsHolder = noiseGen.generatorSettings();
+                    LOGGER.info("[GeoLock] Active GeneratorSettings key: {}", settingsHolder.unwrapKey().map(Object::toString).orElse("direct/unbound"));
+                    NoiseRouter router = settingsHolder.value().noiseRouter();
+                    LOGGER.info("[GeoLock] Active NoiseRouter fields check: finalDensity class: {}", 
+                                router.finalDensity() != null ? router.finalDensity().getClass().getName() : "null");
+                    LOGGER.info("[GeoLock] Active NoiseRouter fields check: temperature class: {}", 
+                                router.temperature() != null ? router.temperature().getClass().getName() : "null");
+                }
+            } catch (Exception e) {
+                LOGGER.error("[GeoLock] Failed to inspect active chunk generator", e);
+            }
         }
     }
 
