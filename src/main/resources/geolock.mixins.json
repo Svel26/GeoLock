@@ -10,7 +10,8 @@
     "ShiftADensityFunctionMixin",
     "ShiftBDensityFunctionMixin",
     "BlendedNoiseDensityFunctionMixin",
-    "WeirdScaledSamplerDensityFunctionMixin"
+    "WeirdScaledSamplerDensityFunctionMixin",
+    "WorldgenRandomMixin"
   ],
   "client": [
   ],

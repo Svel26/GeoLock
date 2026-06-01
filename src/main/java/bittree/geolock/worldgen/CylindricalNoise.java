@@ -12,32 +12,34 @@ import bittree.geolock.GeolockServerConfig;
 /**
  * Custom Density Function for NeoForge 1.21.1.
  *
- * Uses toroidal coordinate remapping to achieve perfectly seamless world looping.
- * Each linear coordinate axis is mapped to a 2D circle, so that coordinates at
- * +halfW and -halfW map to the same point → guaranteed seamless borders.
+ * Applies a cross-fade blend near world boundaries to create a smooth visual
+ * transition at the portal seam, while leaving the center of the world as
+ * completely normal Minecraft terrain.
  *
- * The remapped coordinates for X are: (R*cos(θx), R*sin(θx))
- * The remapped coordinates for Z are: (R*cos(θz), R*sin(θz))
+ * HOW THE BLEND WORKS:
+ * --------------------
+ * The world spans [-halfW, +halfW] on both X and Z axes.
+ * The blend zone is the last BLEND_WIDTH blocks before each edge.
  *
- * For a seamless torus we need 4D noise (2D per axis). Since Minecraft noise is 3D,
- * we pack the 4 circular components into 3D using an orthogonal folding:
- *   noiseX = R*(cos(θx) + cos(θz))
- *   noiseY = blockY  (unchanged — no looping on Y)
- *   noiseZ = R*(sin(θx) + sin(θz))
+ * In the blend zone on the +X side (x in [halfW - BLEND_WIDTH, halfW]):
+ *   t = (x - (halfW - BLEND_WIDTH)) / BLEND_WIDTH   [0 → 1]
+ *   value = lerp(noise(x, z), noise(x - worldWidth, z), t)
  *
- * Both X and Z circular components contribute to both noiseX and noiseZ, ensuring
- * seamlessness on both axes without cross-axis interference patterns.
+ * At x = halfW (t=1):    value = noise(halfW - worldWidth, z) = noise(-halfW, z)
+ * At x = -halfW (t=1):   value = noise(-halfW + worldWidth, z) = noise(+halfW, z)
  *
- * VOID ZONE: finalDensity returns -1000 outside the world boundary.
+ * The seam that remains: noise(-halfW) ≠ noise(+halfW) in general. But this seam
+ * is located exactly at the portal face and is hidden by the Immersive Portals
+ * rendering. The center 80%+ of the world is completely unmodified.
+ *
+ * VOID ZONE:
+ * ----------
+ * For finalDensity, coordinates outside the world boundary return -1000 (void).
  */
 public class CylindricalNoise implements DensityFunction {
 
-    // The radius of the "torus" circle.
-    // Larger R = higher frequency variation per block, smaller = more stretched noise.
-    // We choose R such that the circle circumference equals the world width:
-    //   circumference = 2πR = worldWidth  →  R = worldWidth / (2π)
-    // This preserves the approximate noise frequency compared to flat (linear) sampling.
-    private static final double TWO_PI = 2.0 * Math.PI;
+    /** Width of the cross-fade blend zone in blocks on each side of the world. */
+    private static final double BLEND_WIDTH = 1500.0;
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
@@ -71,12 +73,12 @@ public class CylindricalNoise implements DensityFunction {
         }
 
         // Outside boundary returns void for final density pass
-        if (this.isFinalDensity && !(context instanceof ToroidalContext) &&
+        if (this.isFinalDensity && !(context instanceof OffsetContext) &&
                 (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
             return -1000.0;
         }
 
-        return remap(context, ctx -> this.originalNoise.value().compute(ctx));
+        return blend(context, ctx -> this.originalNoise.value().compute(ctx));
     }
 
     @Override
@@ -109,97 +111,129 @@ public class CylindricalNoise implements DensityFunction {
     public boolean isFinalDensity() { return this.isFinalDensity; }
 
     /**
-     * Remaps block coordinates to toroidal (circular) coordinates before evaluating the noise.
+     * Cross-fade blend: in the outer BLEND_WIDTH blocks on each axis, the noise
+     * smoothly transitions from the local value (t=0) to the wrapped value (t=1).
      *
-     * The toroidal remapping maps each linear axis to a circle:
-     *   θx = (blockX / worldWidth) * 2π   (period = worldWidth blocks)
-     *   θz = (blockZ / worldWidth) * 2π
+     * t is computed using a smoothstep curve for a more natural-looking transition.
      *
-     * The 4 circular components (cos/sin for each axis) are packed into 3D noise coords:
-     *   noiseX = R * (cos(θx) + cos(θz)) / 2
-     *   noiseZ = R * (sin(θx) + sin(θz)) / 2
-     *   noiseY = blockY (unchanged)
+     * Bilinear blending handles corners (both X and Z in their blend zones) correctly.
      *
-     * Division by 2 keeps each individual axis's contribution in [-R, R],
-     * so the combined result is in [-R, R] as well.
-     *
-     * Seamlessness proof:
-     *   At blockX = +halfW and blockX = -halfW:
-     *     θx(+halfW) = +π,  θx(-halfW) = -π
-     *     cos(+π) = cos(-π) = -1  → same noiseX contribution
-     *     sin(+π) = sin(-π) = 0   → same noiseZ contribution
-     *   → Both border coordinates map to the exact same noise input → seamless!
-     *
-     * @param context  the original block coordinate context
-     * @param evaluator  a function to evaluate the underlying noise at the remapped context
-     * @return the noise value at the toroidally remapped position
+     * @param context   the block coordinate context
+     * @param evaluator the underlying noise evaluator
+     * @return blended noise value
      */
-    public static double remap(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
-        if (!GeolockServerConfig.enableWorldLooping || context instanceof ToroidalContext) {
+    public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
+        if (!GeolockServerConfig.enableWorldLooping || context instanceof OffsetContext) {
             return evaluator.applyAsDouble(context);
         }
 
+        double x = context.blockX();
+        double z = context.blockZ();
         double width = GeolockServerConfig.worldBoundaryWidth;
-        // R = world_width / (2π) preserves approximate noise frequency
-        double R = width / TWO_PI;
+        double halfW = width / 2.0;
+        double blendW = BLEND_WIDTH;
 
-        double blockX = context.blockX();
-        double blockZ = context.blockZ();
+        // Compute raw blend factors [0, 1] for each axis.
+        // t=0 means "fully local noise", t=1 means "fully wrapped noise".
+        double tx = 0.0;
+        double tz = 0.0;
 
-        // Map to angle in [-π, π]
-        double thetaX = (blockX / width) * TWO_PI;
-        double thetaZ = (blockZ / width) * TWO_PI;
-
-        // Pack 4 circular components into 2 noise coordinates
-        double remappedX = R * (Math.cos(thetaX) + Math.cos(thetaZ)) * 0.5;
-        double remappedZ = R * (Math.sin(thetaX) + Math.sin(thetaZ)) * 0.5;
-
-        return evaluator.applyAsDouble(new ToroidalContext(context, (int) Math.round(remappedX), (int) Math.round(remappedZ)));
-    }
-
-    /**
-     * A FunctionContext that replaces blockX and blockZ with toroidally remapped values.
-     * blockY is preserved so vertical noise layers remain unchanged.
-     *
-     * This marker class is also used to prevent recursive remapping inside nested evaluators.
-     */
-    public static class ToroidalContext implements FunctionContext {
-        private final FunctionContext original;
-        private final int remappedX;
-        private final int remappedZ;
-
-        public ToroidalContext(FunctionContext original, int remappedX, int remappedZ) {
-            this.original = original;
-            this.remappedX = remappedX;
-            this.remappedZ = remappedZ;
+        if (x > halfW - blendW) {
+            tx = (x - (halfW - blendW)) / blendW;
+        } else if (x < -halfW + blendW) {
+            tx = ((-halfW + blendW) - x) / blendW;
         }
 
-        @Override public int blockX() { return remappedX; }
-        @Override public int blockY() { return original.blockY(); }
-        @Override public int blockZ() { return remappedZ; }
+        if (z > halfW - blendW) {
+            tz = (z - (halfW - blendW)) / blendW;
+        } else if (z < -halfW + blendW) {
+            tz = ((-halfW + blendW) - z) / blendW;
+        }
+
+        // Clamp to [0, 1] and apply smoothstep for a more natural-looking blend
+        tx = smoothstep(Math.max(0.0, Math.min(1.0, tx)));
+        tz = smoothstep(Math.max(0.0, Math.min(1.0, tz)));
+
+        // No blending needed in the center
+        if (tx == 0.0 && tz == 0.0) {
+            return evaluator.applyAsDouble(context);
+        }
+
+        // Direction of the wrap offset: positive side wraps to negative and vice versa
+        double offsetX = (x >= 0) ? -width : width;
+        double offsetZ = (z >= 0) ? -width : width;
+
+        // Evaluate at the four corners of the bilinear blend:
+        // v00 = local position
+        // v10 = X-wrapped position (only if tx > 0)
+        // v01 = Z-wrapped position (only if tz > 0)
+        // v11 = XZ-wrapped position (only if both > 0)
+        double v00 = evaluator.applyAsDouble(context);
+
+        double v10 = v00;
+        if (tx > 0.0) {
+            v10 = evaluator.applyAsDouble(new OffsetContext(context, offsetX, 0));
+        }
+
+        double v01 = v00;
+        if (tz > 0.0) {
+            v01 = evaluator.applyAsDouble(new OffsetContext(context, 0, offsetZ));
+        }
+
+        double v11 = v00;
+        if (tx > 0.0 && tz > 0.0) {
+            v11 = evaluator.applyAsDouble(new OffsetContext(context, offsetX, offsetZ));
+        }
+
+        // Bilinear interpolation
+        return (1.0 - tx) * (1.0 - tz) * v00
+             +        tx  * (1.0 - tz) * v10
+             + (1.0 - tx) *        tz  * v01
+             +        tx  *        tz  * v11;
     }
 
-    // Legacy methods kept for potential external compatibility
+    /** Classic smoothstep: 3t² - 2t³. Input and output in [0, 1]. */
+    private static double smoothstep(double t) {
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    // Kept for external compatibility
+    public static double remap(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
+        return blend(context, evaluator);
+    }
+
     public static int getWrappedX(int x, int z) { return x; }
     public static int getWrappedZ(int x, int z) { return z; }
 
     /**
-     * @deprecated Use remap() instead. Kept for API compatibility.
+     * A FunctionContext that offsets blockX and blockZ by a fixed amount.
+     * Used to evaluate noise at the wrapped (opposite-side) position.
+     * Also serves as a recursion guard — blend() skips re-processing OffsetContexts.
      */
-    @Deprecated
-    public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
-        return remap(context, evaluator);
+    public static class OffsetContext implements FunctionContext {
+        private final FunctionContext original;
+        private final double offsetX;
+        private final double offsetZ;
+
+        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+            this.original = original;
+            this.offsetX = offsetX;
+            this.offsetZ = offsetZ;
+        }
+
+        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
+        @Override public int blockY() { return original.blockY(); }
+        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
     }
 
     /**
-     * @deprecated Use ToroidalContext instead. Kept for API compatibility.
+     * Alias for OffsetContext, kept for API compatibility.
      */
-    @Deprecated
-    public static class OffsetContext extends ToroidalContext {
-        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+    public static class ToroidalContext extends OffsetContext {
+        public ToroidalContext(FunctionContext original, int remappedX, int remappedZ) {
             super(original,
-                (int) Math.round(original.blockX() + offsetX),
-                (int) Math.round(original.blockZ() + offsetZ));
+                remappedX - original.blockX(),
+                remappedZ - original.blockZ());
         }
     }
 }
