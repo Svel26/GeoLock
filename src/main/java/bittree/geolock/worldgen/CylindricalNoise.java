@@ -18,6 +18,9 @@ public class CylindricalNoise implements DensityFunction {
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
+    private final double halfWidth;
+    private final double currentRadius;
+    private final double twoPiOverWidth;
 
     public static final MapCodec<CylindricalNoise> CODEC = RecordCodecBuilder.mapCodec(instance ->
         instance.group(
@@ -29,6 +32,10 @@ public class CylindricalNoise implements DensityFunction {
     public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth) {
         this.originalNoise = originalNoise;
         this.worldWidth = worldWidth;
+        double width = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : worldWidth;
+        this.halfWidth = width / 2.0;
+        this.currentRadius = this.halfWidth / Math.PI;
+        this.twoPiOverWidth = 2.0 * Math.PI / width;
     }
 
     @Override
@@ -37,16 +44,18 @@ public class CylindricalNoise implements DensityFunction {
         double y = context.blockY();
         double z = context.blockZ();
 
-        double currentWidth = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : this.worldWidth;
-        double halfWidth = currentWidth / 2.0;
-        double currentRadius = (currentWidth / 2.0) / Math.PI;
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return this.originalNoise.value().compute(context);
+        }
 
-        // Calculate the angular coordinate mapping
-        double theta = ((x + halfWidth) / currentWidth) * 2.0 * Math.PI;
+        // Calculate the angular coordinate mappings
+        double thetaX = (x + this.halfWidth) * this.twoPiOverWidth;
+        double thetaZ = (z + this.halfWidth) * this.twoPiOverWidth;
 
-        // Project coordinate axis into wrapped cylindrical vectors
-        double nx = currentRadius * Math.cos(theta);
-        double nz = currentRadius * Math.sin(theta) + z;
+        // Project coordinate axis into wrapped cylindrical/toroidal vectors
+        double nx = this.currentRadius * net.minecraft.util.Mth.cos((float) thetaX);
+        double nz = this.currentRadius * net.minecraft.util.Mth.sin((float) thetaX) 
+                  + this.currentRadius * net.minecraft.util.Mth.cos((float) thetaZ);
 
         // Retain standard elevation (y) and sample from the modified context
         return this.originalNoise.value().compute(new CylindricalContext(nx, y, nz));
