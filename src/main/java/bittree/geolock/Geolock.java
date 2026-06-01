@@ -124,6 +124,16 @@ public class Geolock
         // Some common setup code
         LOGGER.info("HELLO FROM COMMON SETUP");
 
+        try {
+            LOGGER.info("=== Methods of DensityFunction.FunctionContext ===");
+            for (java.lang.reflect.Method m : net.minecraft.world.level.levelgen.DensityFunction.FunctionContext.class.getDeclaredMethods()) {
+                LOGGER.info("Method: {} {}({})", m.getReturnType().getSimpleName(), m.getName(), 
+                            java.util.Arrays.stream(m.getParameterTypes()).map(Class::getSimpleName).collect(java.util.stream.Collectors.joining(", ")));
+            }
+        } catch (Exception e) {
+            LOGGER.error("Failed to inspect FunctionContext", e);
+        }
+
         if (Config.logDirtBlock)
             LOGGER.info("DIRT BLOCK >> {}", BuiltInRegistries.BLOCK.getKey(Blocks.DIRT));
 

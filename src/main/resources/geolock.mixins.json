@@ -4,6 +4,11 @@
   "package": "bittree.geolock.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "NoiseDensityFunctionMixin",
+    "ShiftedNoiseDensityFunctionMixin",
+    "ShiftDensityFunctionMixin",
+    "ShiftADensityFunctionMixin",
+    "ShiftBDensityFunctionMixin"
   ],
   "client": [
   ],

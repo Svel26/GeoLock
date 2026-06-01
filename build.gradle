@@ -234,4 +234,14 @@ tasks.register("runJavapUtf8") {
     }
 }
 
+tasks.register("inspectFunctionContext") {
+    doLast {
+        def clazz = Class.forName("net.minecraft.world.level.levelgen.DensityFunction\$FunctionContext")
+        println "=== Methods of FunctionContext ==="
+        clazz.getDeclaredMethods().each { m ->
+            println "${m.getReturnType().simpleName} ${m.name}(${m.parameterTypes*.simpleName.join(', ')})"
+        }
+    }
+}
+
 

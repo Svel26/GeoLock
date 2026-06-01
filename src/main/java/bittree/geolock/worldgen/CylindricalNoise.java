@@ -89,6 +89,43 @@ public class CylindricalNoise implements DensityFunction {
     public Holder<DensityFunction> getOriginalNoise() { return this.originalNoise; }
     public double getWorldWidth() { return this.worldWidth; }
 
+    private static boolean staticInitialized = false;
+    private static double staticHalfWidth;
+    private static double staticCurrentRadius;
+    private static double staticTwoPiOverWidth;
+
+    private static void initStatic() {
+        if (!staticInitialized) {
+            double width = GeolockServerConfig.worldBoundaryWidth;
+            staticHalfWidth = width / 2.0;
+            staticCurrentRadius = staticHalfWidth / Math.PI;
+            staticTwoPiOverWidth = 2.0 * Math.PI / width;
+            staticInitialized = true;
+        }
+    }
+
+    public static int getWrappedX(int x, int z) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return x;
+        }
+        initStatic();
+        double thetaX = (x + staticHalfWidth) * staticTwoPiOverWidth;
+        double nx = staticCurrentRadius * net.minecraft.util.Mth.cos((float) thetaX);
+        return (int) Math.round(nx);
+    }
+
+    public static int getWrappedZ(int x, int z) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return z;
+        }
+        initStatic();
+        double thetaX = (x + staticHalfWidth) * staticTwoPiOverWidth;
+        double thetaZ = (z + staticHalfWidth) * staticTwoPiOverWidth;
+        double nz = staticCurrentRadius * net.minecraft.util.Mth.sin((float) thetaX) 
+                  + staticCurrentRadius * net.minecraft.util.Mth.cos((float) thetaZ);
+        return (int) Math.round(nz);
+    }
+
     private record CylindricalContext(double xDouble, double yDouble, double zDouble) implements FunctionContext {
         @Override public int blockX() { return (int) Math.round(xDouble); }
         @Override public int blockY() { return (int) Math.round(yDouble); }
