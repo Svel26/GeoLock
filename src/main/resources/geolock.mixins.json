@@ -11,9 +11,13 @@
     "ShiftBDensityFunctionMixin",
     "BlendedNoiseDensityFunctionMixin",
     "WeirdScaledSamplerDensityFunctionMixin",
-    "WorldgenRandomMixin"
+    "WorldgenRandomMixin",
+    "LevelMixin"
   ],
   "client": [
+    "CameraMixin",
+    "CameraAccessor",
+    "RenderChunkRegionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

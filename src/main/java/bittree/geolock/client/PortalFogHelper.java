@@ -1,0 +1,63 @@
+package bittree.geolock.client;
+
+import net.minecraft.client.Camera;
+import net.minecraft.world.level.material.FogType;
+
+public class PortalFogHelper {
+    private static Boolean cachedPresent = null;
+    private static final ThreadLocal<Boolean> IN_FOG_CHECK = ThreadLocal.withInitial(() -> false);
+
+    public static boolean isIPPresent() {
+        if (cachedPresent == null) {
+            try {
+                Class.forName("qouteall.imm_ptl.core.render.context_management.PortalRendering");
+                cachedPresent = true;
+            } catch (ClassNotFoundException e) {
+                cachedPresent = false;
+            }
+        }
+        return cachedPresent;
+    }
+
+    public static FogType getIPSubmergedFluidState(Camera camera) {
+        if (!isIPPresent()) {
+            return null;
+        }
+        if (IN_FOG_CHECK.get()) {
+            return null;
+        }
+        try {
+            return IPSafeAccess.getSubmergedFluidState(camera);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    // Isolated inner class to avoid loading Immersive Portals classes unless IP is present
+    private static class IPSafeAccess {
+        public static FogType getSubmergedFluidState(Camera camera) {
+            if (qouteall.imm_ptl.core.render.context_management.PortalRendering.isRendering()) {
+                IN_FOG_CHECK.set(true);
+                try {
+                    // Check if the original camera is underwater or in lava
+                    net.minecraft.client.Camera originalCamera = qouteall.imm_ptl.core.render.context_management.RenderStates.originalCamera;
+                    if (originalCamera != null) {
+                        FogType originalFluid = originalCamera.getFluidInCamera();
+                        if (originalFluid != FogType.NONE) {
+                            return originalFluid;
+                        }
+                    }
+
+                    // Check if the current transformed camera is underwater or in lava
+                    FogType currentFluid = camera.getFluidInCamera();
+                    if (currentFluid != FogType.NONE) {
+                        return currentFluid;
+                    }
+                } finally {
+                    IN_FOG_CHECK.set(false);
+                }
+            }
+            return null;
+        }
+    }
+}

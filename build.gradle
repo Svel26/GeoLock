@@ -205,6 +205,22 @@ tasks.register("runJavap") {
     }
 }
 
+tasks.register("listJar") {
+    doLast {
+        def javaHome = System.getProperty("java.home")
+        def javapExe = new File(javaHome, "bin/javap.exe")
+        if (!javapExe.exists()) {
+            javapExe = new File(javaHome, "bin/javap")
+        }
+        def outStream = new ByteArrayOutputStream()
+        exec {
+            commandLine javapExe.absolutePath, "-p", "-cp", "libs/immersive_portals-6.0.7-all.jar", "qouteall.imm_ptl.core.render.context.RenderStates"
+            standardOutput = outStream
+        }
+        println outStream.toString("UTF-8")
+    }
+}
+
 tasks.register("runJavapUtf8") {
     doLast {
         def javaHome = System.getProperty("java.home")
