@@ -12,12 +12,14 @@
     "BlendedNoiseDensityFunctionMixin",
     "WeirdScaledSamplerDensityFunctionMixin",
     "WorldgenRandomMixin",
-    "LevelMixin"
+    "LevelMixin",
+    "BlockMixin"
   ],
   "client": [
     "CameraMixin",
     "CameraAccessor",
-    "RenderChunkRegionMixin"
+    "CreateWorldScreenAccessor",
+    "WorldTabMixin"
   ],
   "injectors": {
     "defaultRequire": 1

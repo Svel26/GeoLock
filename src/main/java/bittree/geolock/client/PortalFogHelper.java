@@ -37,18 +37,20 @@ public class PortalFogHelper {
     private static class IPSafeAccess {
         public static FogType getSubmergedFluidState(Camera camera) {
             if (qouteall.imm_ptl.core.render.context_management.PortalRendering.isRendering()) {
+                // If the player's eyes are in water or lava, we force that fluid fog
+                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                if (mc.player != null) {
+                    if (mc.player.isEyeInFluid(net.minecraft.tags.FluidTags.WATER)) {
+                        return FogType.WATER;
+                    }
+                    if (mc.player.isEyeInFluid(net.minecraft.tags.FluidTags.LAVA)) {
+                        return FogType.LAVA;
+                    }
+                }
+
                 IN_FOG_CHECK.set(true);
                 try {
-                    // Check if the original camera is underwater or in lava
-                    net.minecraft.client.Camera originalCamera = qouteall.imm_ptl.core.render.context_management.RenderStates.originalCamera;
-                    if (originalCamera != null) {
-                        FogType originalFluid = originalCamera.getFluidInCamera();
-                        if (originalFluid != FogType.NONE) {
-                            return originalFluid;
-                        }
-                    }
-
-                    // Check if the current transformed camera is underwater or in lava
+                    // Fall back to checking the current transformed camera's fluid status
                     FogType currentFluid = camera.getFluidInCamera();
                     if (currentFluid != FogType.NONE) {
                         return currentFluid;

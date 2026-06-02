@@ -109,14 +109,30 @@ public class Geolock
 
         // Register the item to a creative tab
         modEventBus.addListener(this::addCreative);
+        modEventBus.addListener(this::registerPayloads);
 
         // Register client events cleanly if physical client to avoid deprecation warnings
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             modEventBus.addListener(ClientModEvents::onClientSetup);
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(bittree.geolock.client.ClientScreenEvents.class);
         }
 
         // Register our mod's ModConfigSpec so that FML can create and load the config file for us
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+    }
+
+    private void registerPayloads(final net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
+        final net.neoforged.neoforge.network.registration.PayloadRegistrar registrar = event.registrar(MODID);
+        registrar.playToClient(
+                SyncWorldSizePayload.TYPE,
+                SyncWorldSizePayload.STREAM_CODEC,
+                (payload, context) -> {
+                    context.enqueueWork(() -> {
+                        GeolockServerConfig.worldBoundaryWidth = payload.width();
+                        LOGGER.info("[GeoLock] Synced world boundary width from server: {}", payload.width());
+                    });
+                }
+        );
     }
 
     private void commonSetup(final FMLCommonSetupEvent event)
@@ -153,8 +169,18 @@ public class Geolock
     @SubscribeEvent
     public static void onServerStarting(ServerStartingEvent event)
     {
-        // Do something when the server starts
-        LOGGER.info("HELLO from server starting");
+        LOGGER.info("[GeoLock] Server is starting, loading world size config...");
+        java.nio.file.Path savePath = event.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
+        java.io.File worldDir = savePath.toFile();
+
+        double sizeToUse = GeolockServerConfig.worldBoundaryWidth;
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient() && bittree.geolock.client.ClientScreenEvents.hasTempNewWorldSize) {
+            sizeToUse = bittree.geolock.client.ClientScreenEvents.tempNewWorldSize;
+            bittree.geolock.client.ClientScreenEvents.hasTempNewWorldSize = false; // Reset
+            LOGGER.info("[GeoLock] Found temp custom size from client UI: {}", sizeToUse);
+        }
+
+        GeolockServerConfig.loadOrInitializeWorldSize(worldDir, sizeToUse);
     }
 
     @SubscribeEvent
@@ -335,6 +361,18 @@ public class Geolock
                     java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
                 );
             }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLoggedIn(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer serverPlayer) {
+            LOGGER.info("[GeoLock] Syncing world boundary width ({}) to player {}", 
+                        GeolockServerConfig.worldBoundaryWidth, serverPlayer.getName().getString());
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                serverPlayer, 
+                new SyncWorldSizePayload(GeolockServerConfig.worldBoundaryWidth)
+            );
         }
     }
 

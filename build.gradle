@@ -107,11 +107,11 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
-    // Terralith v2.5.8 (Modrinth API)
-    implementation "maven.modrinth:terralith:2.5.8"
-
     // Tectonic v3.0.22-neoforge-21.1
     implementation "maven.modrinth:tectonic:3.0.22-neoforge-21.1"
+
+    // Sodium mc1.21.1-0.6.13-neoforge
+    implementation "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
 
     // Local runtime mods (KubeJS and Immersive Portals)
     implementation name: 'kubejs-neoforge-2101.7.2-build.368'
@@ -230,25 +230,14 @@ tasks.register("runJavapUtf8") {
         }
         def outStream = new ByteArrayOutputStream()
         exec {
-            commandLine javapExe.absolutePath, "-c", "-p", "-cp", "libs/immersive_portals-6.0.7-all.jar", "qouteall.imm_ptl.core.portal.global_portals.WorldWrappingPortal"
+            commandLine javapExe.absolutePath, "-c", "-p", "-cp", "libs/immersive_portals-6.0.7-all.jar", "qouteall.q_misc_util.my_util.IntBox"
             standardOutput = outStream
         }
         def text = outStream.toString("UTF-8")
-        def lines = text.split("\n")
-        int startIndex = -1
-        for (int i = 0; i < lines.length; i++) {
-            if (lines[i].contains("invokeAddWrappingZone")) {
-                startIndex = i
-                break
-            }
-        }
-        if (startIndex != -1) {
-            println "=== invokeAddWrappingZone ==="
-            for (int i = startIndex; i < Math.min(startIndex + 150, lines.length); i++) {
-                println lines[i]
-            }
-        } else {
-            println "Could not find invokeAddWrappingZone"
-        }
+        def outFile = new File("C:/Users/svenj/.gemini/antigravity/brain/48362012-7627-4668-a464-d950dde6a6b8/scratch/int_box.txt")
+        outFile.parentFile.mkdirs()
+        outFile.text = text
+        println "Wrote javap output to ${outFile.absolutePath}"
     }
 }
+

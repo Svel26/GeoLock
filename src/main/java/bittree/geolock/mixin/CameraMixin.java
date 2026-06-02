@@ -15,6 +15,7 @@ public class CameraMixin {
         FogType overrideFluid = PortalFogHelper.getIPSubmergedFluidState((Camera) (Object) this);
         if (overrideFluid != null) {
             cir.setReturnValue(overrideFluid);
+            cir.cancel(); // CRITICAL: Stop execution and prevent other mixins from overwriting to NONE
         }
     }
 }

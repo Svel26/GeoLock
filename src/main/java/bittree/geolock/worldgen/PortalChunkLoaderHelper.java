@@ -24,15 +24,20 @@ public class PortalChunkLoaderHelper {
 
         List<ChunkPos> targets = new ArrayList<>();
 
-        if (nearEast) targets.add(new ChunkPos((int) Math.floor((x - w) / 16.0), (int) Math.floor(z / 16.0)));
-        if (nearWest) targets.add(new ChunkPos((int) Math.floor((x + w) / 16.0), (int) Math.floor(z / 16.0)));
-        if (nearNorth) targets.add(new ChunkPos((int) Math.floor(x / 16.0), (int) Math.floor((z - w) / 16.0)));
-        if (nearSouth) targets.add(new ChunkPos((int) Math.floor(x / 16.0), (int) Math.floor((z + w) / 16.0)));
+        int px = (int) Math.floor(x / 16.0);
+        int pz = (int) Math.floor(z / 16.0);
+        int chunkWest = (int) Math.floor(-halfW / 16.0);
+        int chunkEast = (int) Math.floor((halfW - 1.0) / 16.0);
 
-        if (nearEast && nearNorth) targets.add(new ChunkPos((int) Math.floor((x - w) / 16.0), (int) Math.floor((z - w) / 16.0)));
-        if (nearEast && nearSouth) targets.add(new ChunkPos((int) Math.floor((x - w) / 16.0), (int) Math.floor((z + w) / 16.0)));
-        if (nearWest && nearNorth) targets.add(new ChunkPos((int) Math.floor((x + w) / 16.0), (int) Math.floor((z - w) / 16.0)));
-        if (nearWest && nearSouth) targets.add(new ChunkPos((int) Math.floor((x + w) / 16.0), (int) Math.floor((z + w) / 16.0)));
+        if (nearEast) targets.add(new ChunkPos(chunkWest, pz));
+        if (nearWest) targets.add(new ChunkPos(chunkEast, pz));
+        if (nearNorth) targets.add(new ChunkPos(px, chunkWest));
+        if (nearSouth) targets.add(new ChunkPos(px, chunkEast));
+
+        if (nearEast && nearNorth) targets.add(new ChunkPos(chunkWest, chunkWest));
+        if (nearEast && nearSouth) targets.add(new ChunkPos(chunkWest, chunkEast));
+        if (nearWest && nearNorth) targets.add(new ChunkPos(chunkEast, chunkWest));
+        if (nearWest && nearSouth) targets.add(new ChunkPos(chunkEast, chunkEast));
 
         int radius = player.getServer().getPlayerList().getViewDistance() + 2;
         ResourceKey<Level> dim = player.level().dimension();

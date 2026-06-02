@@ -114,6 +114,8 @@ public class CylindricalNoise implements DensityFunction {
         return ((a % b) + b) % b;
     }
 
+    private static final ThreadLocal<ReusableOffsetContext> REUSABLE_CONTEXT = ThreadLocal.withInitial(ReusableOffsetContext::new);
+
     /**
      * Cross-fade blend: in the outer BLEND_WIDTH blocks on each axis, the noise
      * smoothly transitions from the local value to a 50/50 blend at the boundary,
@@ -130,63 +132,75 @@ public class CylindricalNoise implements DensityFunction {
             return evaluator.applyAsDouble(context);
         }
 
-        double x = context.blockX();
-        double z = context.blockZ();
-        double width = GeolockServerConfig.worldBoundaryWidth;
-        double halfW = width / 2.0;
-        double blendW = GeolockServerConfig.blendZoneWidth;
+        int x = context.blockX();
+        int z = context.blockZ();
+        int w = (int) GeolockServerConfig.worldBoundaryWidth;
+        int halfW = w / 2;
+        int blendW = (int) GeolockServerConfig.blendZoneWidth;
 
         // Map global coordinates to local range [-halfW, halfW]
-        double xLocal = modulo(x + halfW, width) - halfW;
-        double zLocal = modulo(z + halfW, width) - halfW;
+        int xLocal = ((x + halfW) % w + w) % w - halfW;
+        int zLocal = ((z + halfW) % w + w) % w - halfW;
 
         double wx = 0.0;
         double offsetX = 0.0;
         if (xLocal > halfW - blendW) {
-            wx = 0.5 * smoothstep((xLocal - (halfW - blendW)) / blendW);
-            offsetX = -width;
+            wx = 0.5 * smoothstep(((double)xLocal + 0.5 - (halfW - blendW)) / blendW);
+            offsetX = -w;
         } else if (xLocal < -halfW + blendW) {
-            wx = 0.5 * smoothstep(((-halfW + blendW) - xLocal) / blendW);
-            offsetX = width;
+            wx = 0.5 * smoothstep(((double)(-halfW + blendW) - ((double)xLocal + 0.5)) / blendW);
+            offsetX = w;
         }
 
         double wz = 0.0;
         double offsetZ = 0.0;
         if (zLocal > halfW - blendW) {
-            wz = 0.5 * smoothstep((zLocal - (halfW - blendW)) / blendW);
-            offsetZ = -width;
+            wz = 0.5 * smoothstep(((double)zLocal + 0.5 - (halfW - blendW)) / blendW);
+            offsetZ = -w;
         } else if (zLocal < -halfW + blendW) {
-            wz = 0.5 * smoothstep(((-halfW + blendW) - zLocal) / blendW);
-            offsetZ = width;
+            wz = 0.5 * smoothstep(((double)(-halfW + blendW) - ((double)zLocal + 0.5)) / blendW);
+            offsetZ = w;
         }
 
         double dx = xLocal - x;
         double dz = zLocal - z;
 
+        ReusableOffsetContext reusable = REUSABLE_CONTEXT.get();
+
         if (wx == 0.0 && wz == 0.0) {
             if (dx == 0.0 && dz == 0.0) {
                 return evaluator.applyAsDouble(context);
             } else {
-                return evaluator.applyAsDouble(new OffsetContext(context, dx, dz));
+                reusable.set(context, dx, dz);
+                return evaluator.applyAsDouble(reusable);
             }
         }
 
-        FunctionContext localCtx = (dx == 0.0 && dz == 0.0) ? context : new OffsetContext(context, dx, dz);
+        FunctionContext localCtx;
+        if (dx == 0.0 && dz == 0.0) {
+            localCtx = context;
+        } else {
+            reusable.set(context, dx, dz);
+            localCtx = reusable;
+        }
         double v00 = evaluator.applyAsDouble(localCtx);
 
         double v10 = v00;
         if (wx > 0.0) {
-            v10 = evaluator.applyAsDouble(new OffsetContext(context, dx + offsetX, dz));
+            reusable.set(context, dx + offsetX, dz);
+            v10 = evaluator.applyAsDouble(reusable);
         }
 
         double v01 = v00;
         if (wz > 0.0) {
-            v01 = evaluator.applyAsDouble(new OffsetContext(context, dx, dz + offsetZ));
+            reusable.set(context, dx, dz + offsetZ);
+            v01 = evaluator.applyAsDouble(reusable);
         }
 
         double v11 = v00;
         if (wx > 0.0 && wz > 0.0) {
-            v11 = evaluator.applyAsDouble(new OffsetContext(context, dx + offsetX, dz + offsetZ));
+            reusable.set(context, dx + offsetX, dz + offsetZ);
+            v11 = evaluator.applyAsDouble(reusable);
         }
 
         // Bilinear interpolation
@@ -215,6 +229,30 @@ public class CylindricalNoise implements DensityFunction {
         private final double offsetZ;
 
         public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+            this.original = original;
+            this.offsetX = offsetX;
+            this.offsetZ = offsetZ;
+        }
+
+        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
+        @Override public int blockY() { return original.blockY(); }
+        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
+    }
+
+    /**
+     * Reusable thread-local version of OffsetContext to completely eliminate garbage collection pressure
+     * during high-frequency world generation density evaluation.
+     */
+    public static class ReusableOffsetContext extends OffsetContext {
+        private FunctionContext original;
+        private double offsetX;
+        private double offsetZ;
+
+        public ReusableOffsetContext() {
+            super(null, 0, 0);
+        }
+
+        public void set(FunctionContext original, double offsetX, double offsetZ) {
             this.original = original;
             this.offsetX = offsetX;
             this.offsetZ = offsetZ;

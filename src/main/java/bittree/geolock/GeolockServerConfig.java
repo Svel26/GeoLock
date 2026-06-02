@@ -70,6 +70,39 @@ public class GeolockServerConfig {
         }
     }
 
+    public static void loadOrInitializeWorldSize(File worldDir, double defaultWidth) {
+        try {
+            File file = new File(worldDir, "geolock-world.json");
+            if (file.exists()) {
+                try (FileReader reader = new FileReader(file)) {
+                    WorldSizeConfig config = GSON.fromJson(reader, WorldSizeConfig.class);
+                    if (config != null && config.worldBoundaryWidth >= 512.0) {
+                        worldBoundaryWidth = config.worldBoundaryWidth;
+                        LOGGER.info("[GeoLock] Loaded worldBoundaryWidth from save folder: {}", worldBoundaryWidth);
+                    } else {
+                        worldBoundaryWidth = Math.max(512.0, config != null ? config.worldBoundaryWidth : 512.0);
+                        LOGGER.warn("[GeoLock] Loaded worldBoundaryWidth was invalid, enforcing minimum of: {}", worldBoundaryWidth);
+                    }
+                }
+            } else {
+                double size = Math.max(512.0, defaultWidth);
+                LOGGER.info("[GeoLock] geolock-world.json not found in world directory, initializing with width: {}", size);
+                WorldSizeConfig config = new WorldSizeConfig();
+                config.worldBoundaryWidth = size;
+                worldBoundaryWidth = size;
+                try (FileWriter writer = new FileWriter(file)) {
+                    GSON.toJson(config, writer);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("[GeoLock] Error loading/initializing geolock-world.json", e);
+        }
+    }
+
+    private static class WorldSizeConfig {
+        double worldBoundaryWidth;
+    }
+
     private static class RawConfig {
         boolean enableWorldLooping;
         double worldBoundaryWidth;

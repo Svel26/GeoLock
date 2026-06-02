@@ -4,6 +4,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import bittree.geolock.GeolockServerConfig;
@@ -34,4 +35,14 @@ public class ShiftedNoiseDensityFunctionMixin {
             );
         }));
     }
+
+    @Inject(method = "fillArray([DLnet/minecraft/world/level/levelgen/DensityFunction$ContextProvider;)V", at = @At("HEAD"), cancellable = true)
+    private void onFillArray(double[] densities, DensityFunction.ContextProvider provider, CallbackInfo ci) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return;
+        }
+        ci.cancel();
+        provider.fillAllDirectly(densities, (DensityFunction) (Object) this);
+    }
 }
+

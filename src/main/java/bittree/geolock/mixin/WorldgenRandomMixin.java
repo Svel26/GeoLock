@@ -144,11 +144,20 @@ public class WorldgenRandomMixin {
      *   wrapChunkCoord( 624) =  624   (one chunk before right edge)
      *   wrapChunkCoord( 625) = -625   (right edge → same as left edge, seamless!)
      */
+    private static int cachedWorldWidthInChunks = -1;
+    private static int cachedHalf = -1;
+
+    private static void initCache() {
+        if (cachedWorldWidthInChunks == -1) {
+            double width = GeolockServerConfig.worldBoundaryWidth;
+            cachedWorldWidthInChunks = (int) Math.round(width / 16.0);
+            cachedHalf = cachedWorldWidthInChunks / 2;
+        }
+    }
+
     private static int wrapChunkCoord(int coord) {
-        double width = GeolockServerConfig.worldBoundaryWidth;
-        int worldWidthInChunks = (int) Math.round(width / 16.0);
-        int half = worldWidthInChunks / 2;
-        return Math.floorMod(coord + half, worldWidthInChunks) - half;
+        initCache();
+        return Math.floorMod(coord + cachedHalf, cachedWorldWidthInChunks) - cachedHalf;
     }
 
     /**
@@ -156,6 +165,7 @@ public class WorldgenRandomMixin {
      */
     private static int wrapBlockCoord(int blockCoord) {
         int chunkCoord = Math.floorDiv(blockCoord, 16);
-        return wrapChunkCoord(chunkCoord) * 16;
+        int remainder = Math.floorMod(blockCoord, 16);
+        return wrapChunkCoord(chunkCoord) * 16 + remainder;
     }
 }
