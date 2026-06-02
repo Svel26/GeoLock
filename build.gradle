@@ -18,6 +18,9 @@ repositories {
             includeGroup "maven.modrinth"
         }
     }
+    flatDir {
+        dirs 'libs'
+    }
 }
 
 base {
@@ -111,11 +114,11 @@ dependencies {
     implementation "maven.modrinth:tectonic:3.0.22-neoforge-21.1"
 
     // Local runtime mods (KubeJS and Immersive Portals)
-    implementation files("libs/kubejs-neoforge-2101.7.2-build.368.jar")
-    implementation files("libs/immersive_portals-6.0.7-all.jar")
-    implementation files("libs/rhino.jar")
-    implementation files("libs/lithostitched.jar")
-    implementation files("libs/cloth-config.jar")
+    implementation name: 'kubejs-neoforge-2101.7.2-build.368'
+    implementation name: 'immersive_portals-6.0.7-all'
+    implementation name: 'rhino'
+    implementation name: 'lithostitched'
+    implementation name: 'cloth-config'
 
     // Example mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

@@ -38,8 +38,7 @@ import bittree.geolock.GeolockServerConfig;
  */
 public class CylindricalNoise implements DensityFunction {
 
-    /** Width of the cross-fade blend zone in blocks on each side of the world. */
-    private static final double BLEND_WIDTH = 1500.0;
+
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
@@ -70,12 +69,6 @@ public class CylindricalNoise implements DensityFunction {
     public double compute(FunctionContext context) {
         if (!GeolockServerConfig.enableWorldLooping) {
             return this.originalNoise.value().compute(context);
-        }
-
-        // Outside boundary returns void for final density pass
-        if (this.isFinalDensity && !(context instanceof OffsetContext) &&
-                (Math.abs(context.blockX()) > this.halfWidth || Math.abs(context.blockZ()) > this.halfWidth)) {
-            return -1000.0;
         }
 
         return blend(context, ctx -> this.originalNoise.value().compute(ctx));
@@ -111,10 +104,20 @@ public class CylindricalNoise implements DensityFunction {
     public boolean isFinalDensity() { return this.isFinalDensity; }
 
     /**
+     * Classic smoothstep: 3t² - 2t³. Input and output in [0, 1].
+     */
+    private static double smoothstep(double t) {
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    private static double modulo(double a, double b) {
+        return ((a % b) + b) % b;
+    }
+
+    /**
      * Cross-fade blend: in the outer BLEND_WIDTH blocks on each axis, the noise
-     * smoothly transitions from the local value (t=0) to the wrapped value (t=1).
-     *
-     * t is computed using a smoothstep curve for a more natural-looking transition.
+     * smoothly transitions from the local value to a 50/50 blend at the boundary,
+     * matching the opposite side of the boundary perfectly.
      *
      * Bilinear blending handles corners (both X and Z in their blend zones) correctly.
      *
@@ -131,70 +134,66 @@ public class CylindricalNoise implements DensityFunction {
         double z = context.blockZ();
         double width = GeolockServerConfig.worldBoundaryWidth;
         double halfW = width / 2.0;
-        double blendW = BLEND_WIDTH;
+        double blendW = GeolockServerConfig.blendZoneWidth;
 
-        // Compute raw blend factors [0, 1] for each axis.
-        // t=0 means "fully local noise", t=1 means "fully wrapped noise".
-        double tx = 0.0;
-        double tz = 0.0;
+        // Map global coordinates to local range [-halfW, halfW]
+        double xLocal = modulo(x + halfW, width) - halfW;
+        double zLocal = modulo(z + halfW, width) - halfW;
 
-        if (x > halfW - blendW) {
-            tx = (x - (halfW - blendW)) / blendW;
-        } else if (x < -halfW + blendW) {
-            tx = ((-halfW + blendW) - x) / blendW;
+        double wx = 0.0;
+        double offsetX = 0.0;
+        if (xLocal > halfW - blendW) {
+            wx = 0.5 * smoothstep((xLocal - (halfW - blendW)) / blendW);
+            offsetX = -width;
+        } else if (xLocal < -halfW + blendW) {
+            wx = 0.5 * smoothstep(((-halfW + blendW) - xLocal) / blendW);
+            offsetX = width;
         }
 
-        if (z > halfW - blendW) {
-            tz = (z - (halfW - blendW)) / blendW;
-        } else if (z < -halfW + blendW) {
-            tz = ((-halfW + blendW) - z) / blendW;
+        double wz = 0.0;
+        double offsetZ = 0.0;
+        if (zLocal > halfW - blendW) {
+            wz = 0.5 * smoothstep((zLocal - (halfW - blendW)) / blendW);
+            offsetZ = -width;
+        } else if (zLocal < -halfW + blendW) {
+            wz = 0.5 * smoothstep(((-halfW + blendW) - zLocal) / blendW);
+            offsetZ = width;
         }
 
-        // Clamp to [0, 1] and apply smoothstep for a more natural-looking blend
-        tx = smoothstep(Math.max(0.0, Math.min(1.0, tx)));
-        tz = smoothstep(Math.max(0.0, Math.min(1.0, tz)));
+        double dx = xLocal - x;
+        double dz = zLocal - z;
 
-        // No blending needed in the center
-        if (tx == 0.0 && tz == 0.0) {
-            return evaluator.applyAsDouble(context);
+        if (wx == 0.0 && wz == 0.0) {
+            if (dx == 0.0 && dz == 0.0) {
+                return evaluator.applyAsDouble(context);
+            } else {
+                return evaluator.applyAsDouble(new OffsetContext(context, dx, dz));
+            }
         }
 
-        // Direction of the wrap offset: positive side wraps to negative and vice versa
-        double offsetX = (x >= 0) ? -width : width;
-        double offsetZ = (z >= 0) ? -width : width;
-
-        // Evaluate at the four corners of the bilinear blend:
-        // v00 = local position
-        // v10 = X-wrapped position (only if tx > 0)
-        // v01 = Z-wrapped position (only if tz > 0)
-        // v11 = XZ-wrapped position (only if both > 0)
-        double v00 = evaluator.applyAsDouble(context);
+        FunctionContext localCtx = (dx == 0.0 && dz == 0.0) ? context : new OffsetContext(context, dx, dz);
+        double v00 = evaluator.applyAsDouble(localCtx);
 
         double v10 = v00;
-        if (tx > 0.0) {
-            v10 = evaluator.applyAsDouble(new OffsetContext(context, offsetX, 0));
+        if (wx > 0.0) {
+            v10 = evaluator.applyAsDouble(new OffsetContext(context, dx + offsetX, dz));
         }
 
         double v01 = v00;
-        if (tz > 0.0) {
-            v01 = evaluator.applyAsDouble(new OffsetContext(context, 0, offsetZ));
+        if (wz > 0.0) {
+            v01 = evaluator.applyAsDouble(new OffsetContext(context, dx, dz + offsetZ));
         }
 
         double v11 = v00;
-        if (tx > 0.0 && tz > 0.0) {
-            v11 = evaluator.applyAsDouble(new OffsetContext(context, offsetX, offsetZ));
+        if (wx > 0.0 && wz > 0.0) {
+            v11 = evaluator.applyAsDouble(new OffsetContext(context, dx + offsetX, dz + offsetZ));
         }
 
         // Bilinear interpolation
-        return (1.0 - tx) * (1.0 - tz) * v00
-             +        tx  * (1.0 - tz) * v10
-             + (1.0 - tx) *        tz  * v01
-             +        tx  *        tz  * v11;
-    }
-
-    /** Classic smoothstep: 3t² - 2t³. Input and output in [0, 1]. */
-    private static double smoothstep(double t) {
-        return t * t * (3.0 - 2.0 * t);
+        return (1.0 - wx) * (1.0 - wz) * v00
+             +        wx  * (1.0 - wz) * v10
+             + (1.0 - wx) *        wz  * v01
+             +        wx  *        wz  * v11;
     }
 
     // Kept for external compatibility

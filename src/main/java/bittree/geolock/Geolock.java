@@ -186,7 +186,10 @@ public class Geolock
     @SubscribeEvent
     public static void onServerAboutToStart(ServerAboutToStartEvent event)
     {
-        wrapOverworldNoiseRouter(event.getServer());
+        // Disable root-level NoiseRouter wrapping as it causes exponential evaluations (4^D)
+        // when combined with leaf-level mixins, resulting in severe chunk generation lag.
+        // The leaf-level mixins are sufficient to make all noise and biomes loop seamlessly.
+        // wrapOverworldNoiseRouter(event.getServer());
     }
 
     private static void wrapOverworldNoiseRouter(MinecraftServer server) {

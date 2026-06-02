@@ -18,6 +18,7 @@ public class GeolockServerConfig {
     public static boolean enableWorldLooping = true;
     public static double worldBoundaryWidth = 20000.0;
     public static double teleportBufferZone = 5.0;
+    public static double blendZoneWidth = 128.0;
     public static boolean logVehicleTeleports = true;
     public static boolean debugResourcePlacement = false;
 
@@ -32,12 +33,13 @@ public class GeolockServerConfig {
                         enableWorldLooping = raw.enableWorldLooping;
                         worldBoundaryWidth = raw.worldBoundaryWidth;
                         teleportBufferZone = raw.teleportBufferZone;
+                        blendZoneWidth = raw.blendZoneWidth > 0.0 ? raw.blendZoneWidth : 128.0;
                         if (raw.logging != null) {
                             logVehicleTeleports = raw.logging.logVehicleTeleports;
                             debugResourcePlacement = raw.logging.debugResourcePlacement;
                         }
-                        LOGGER.info("[GeoLock] Loaded geolock-server.json: enableWorldLooping={}, worldBoundaryWidth={}, teleportBufferZone={}", 
-                                    enableWorldLooping, worldBoundaryWidth, teleportBufferZone);
+                        LOGGER.info("[GeoLock] Loaded geolock-server.json: enableWorldLooping={}, worldBoundaryWidth={}, teleportBufferZone={}, blendZoneWidth={}", 
+                                    enableWorldLooping, worldBoundaryWidth, teleportBufferZone, blendZoneWidth);
                     }
                 }
             } else {
@@ -55,6 +57,7 @@ public class GeolockServerConfig {
             raw.enableWorldLooping = enableWorldLooping;
             raw.worldBoundaryWidth = worldBoundaryWidth;
             raw.teleportBufferZone = teleportBufferZone;
+            raw.blendZoneWidth = blendZoneWidth;
             raw.logging = new RawConfig.Logging();
             raw.logging.logVehicleTeleports = logVehicleTeleports;
             raw.logging.debugResourcePlacement = debugResourcePlacement;
@@ -71,6 +74,7 @@ public class GeolockServerConfig {
         boolean enableWorldLooping;
         double worldBoundaryWidth;
         double teleportBufferZone;
+        double blendZoneWidth;
         Logging logging;
 
         private static class Logging {
