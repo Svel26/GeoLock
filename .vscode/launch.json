@@ -16,7 +16,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dgeolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\bin\\main"
+        "-Dfml.modFolders=geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\classes\\java\\main;geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\resources\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -38,7 +38,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\moddev\\dataRunVmArgs.txt",
-        "-Dfml.modFolders\u003dgeolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\bin\\main"
+        "-Dfml.modFolders=geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\classes\\java\\main;geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\resources\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -60,7 +60,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\moddev\\gameTestServerRunVmArgs.txt",
-        "-Dfml.modFolders\u003dgeolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\bin\\main"
+        "-Dfml.modFolders=geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\classes\\java\\main;geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\resources\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -82,7 +82,7 @@
       ],
       "vmArgs": [
         "@C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dgeolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\bin\\main"
+        "-Dfml.modFolders=geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\classes\\java\\main;geolock%%C:\\Users\\svenj\\IdeaProjects\\GeoLock\\build\\resources\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
