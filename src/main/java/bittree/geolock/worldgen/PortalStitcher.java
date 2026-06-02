@@ -113,12 +113,12 @@ public class PortalStitcher {
                             double currentMaxX = area.maxX;
                             double currentMinZ = area.minZ;
                             double currentMaxZ = area.maxZ;
-                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - halfW) < 2.0 &&
-                                Math.abs(currentMinZ - (-halfW)) < 2.0 && Math.abs(currentMaxZ - halfW) < 2.0) {
+                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - (halfW - 1)) < 2.0 &&
+                                Math.abs(currentMinZ - (-halfW)) < 2.0 && Math.abs(currentMaxZ - (halfW - 1)) < 2.0) {
                                 zoneMatches = true;
                             } else {
-                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected X/Z +-{}, got X=[{}, {}], Z=[{}, {}]). Removing old zone.", 
-                                            halfW, currentMinX, currentMaxX, currentMinZ, currentMaxZ);
+                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected X/Z range [{}, {}], got X=[{}, {}], Z=[{}, {}]). Removing old zone.", 
+                                            -halfW, halfW - 1, currentMinX, currentMaxX, currentMinZ, currentMaxZ);
                                 java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
                                 if (removeFromWorldMethod == null) {
                                     throw new NoSuchMethodException("removeFromWorld method not found");
@@ -131,11 +131,11 @@ public class PortalStitcher {
             }
 
             if (!zoneMatches) {
-                LOGGER.info("[GeoLock] Creating native inward wrapping zone at X = +-{}", halfW);
+                LOGGER.info("[GeoLock] Creating native inward wrapping zone at X range [{}, {}], Z range [{}, {}]", -halfW, halfW - 1, -halfW, halfW - 1);
                 int xMin = (int) -halfW;
-                int xMax = (int) halfW;
+                int xMax = (int) (halfW - 1);
                 int zMin = (int) -halfW;
-                int zMax = (int) halfW;
+                int zMax = (int) (halfW - 1);
                 
                 java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
                 if (invokeAddWrappingZoneMethod == null) {

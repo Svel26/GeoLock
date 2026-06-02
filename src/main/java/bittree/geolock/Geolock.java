@@ -250,16 +250,23 @@ public class Geolock
             return;
         }
 
-        if (portalsActive) {
-            return;
-        }
-
         net.minecraft.world.entity.player.Player player = event.getEntity();
         if (player.level().isClientSide() || !(player instanceof ServerPlayer serverPlayer)) {
             return;
         }
 
         if (serverPlayer.level().dimension() != Level.OVERWORLD) {
+            return;
+        }
+
+        if (portalsActive) {
+            if (serverPlayer.tickCount % 20 == 0) {
+                double w = GeolockServerConfig.worldBoundaryWidth;
+                double threshold = serverPlayer.getServer().getPlayerList().getViewDistance() * 16.0 + 32.0;
+                bittree.geolock.worldgen.PortalChunkLoaderHelper.updatePlayerChunkLoaders(
+                    serverPlayer, serverPlayer.getX(), serverPlayer.getZ(), w, threshold
+                );
+            }
             return;
         }
 
@@ -328,6 +335,13 @@ public class Geolock
                     java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
                 );
             }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {
+        if (portalsActive && event.getEntity() instanceof ServerPlayer serverPlayer) {
+            bittree.geolock.worldgen.PortalChunkLoaderHelper.cleanupPlayer(serverPlayer);
         }
     }
 
