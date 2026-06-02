@@ -25,13 +25,16 @@ public class ShiftedNoiseDensityFunctionMixin {
             return;
         }
         cir.setReturnValue(ToroidalNoise.remap(context, ctx -> {
+            double x = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.x() : ctx.blockX();
+            double y = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.y() : ctx.blockY();
+            double z = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.z() : ctx.blockZ();
             double sx = this.shiftX.compute(ctx);
             double sy = this.shiftY.compute(ctx);
             double sz = this.shiftZ.compute(ctx);
             return this.noise.getValue(
-                (double)ctx.blockX() * this.xzScale + sx, 
-                (double)ctx.blockY() * this.yScale + sy, 
-                (double)ctx.blockZ() * this.xzScale + sz
+                x * this.xzScale + sx, 
+                y * this.yScale + sy, 
+                z * this.xzScale + sz
             );
         }));
     }

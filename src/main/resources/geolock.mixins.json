@@ -19,7 +19,8 @@
     "CameraMixin",
     "CameraAccessor",
     "CreateWorldScreenAccessor",
-    "WorldTabMixin"
+    "WorldTabMixin",
+    "RenderChunkRegionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

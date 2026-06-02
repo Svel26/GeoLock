@@ -144,27 +144,46 @@ public class ToroidalNoise implements DensityFunction {
         // 3. Calculate continuous X weights up to exactly 0.5 at the border
         double wx = 0.0;
         double offsetX = 0.0;
-        if (xLocal > halfW - blendW) {
+        double visualOffset = w;
+        double distEdgeXPos = halfW - xLocal;
+        double distEdgeXNeg = xLocal - (-halfW);
+        
+        if (distEdgeXPos < 0.51) {
+            wx = 0.5;
+            offsetX = -visualOffset;
+        } else if (distEdgeXNeg < 0.51) {
+            wx = 0.5;
+            offsetX = visualOffset;
+        } else if (xLocal > halfW - blendW) {
             double t = (xLocal - (halfW - blendW)) / blendW;
             wx = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
-            offsetX = -w;
+            offsetX = -visualOffset;
         } else if (xLocal < -halfW + blendW) {
             double t = (-halfW + blendW - xLocal) / blendW;
             wx = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
-            offsetX = w;
+            offsetX = visualOffset;
         }
 
         // 4. Calculate continuous Z weights up to exactly 0.5 at the border
         double wz = 0.0;
         double offsetZ = 0.0;
-        if (zLocal > halfW - blendW) {
+        double distEdgeZPos = halfW - zLocal;
+        double distEdgeZNeg = zLocal - (-halfW);
+
+        if (distEdgeZPos < 0.51) {
+            wz = 0.5;
+            offsetZ = -visualOffset;
+        } else if (distEdgeZNeg < 0.51) {
+            wz = 0.5;
+            offsetZ = visualOffset;
+        } else if (zLocal > halfW - blendW) {
             double t = (zLocal - (halfW - blendW)) / blendW;
             wz = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
-            offsetZ = -w;
+            offsetZ = -visualOffset;
         } else if (zLocal < -halfW + blendW) {
             double t = (-halfW + blendW - zLocal) / blendW;
             wz = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
-            offsetZ = w;
+            offsetZ = visualOffset;
         }
 
         // Convert double deltas back to standard context offsets for evaluation
@@ -225,11 +244,20 @@ public class ToroidalNoise implements DensityFunction {
     public static int getWrappedZ(int x, int z) { return z; }
 
     /**
+     * Interface for high-precision double coordinate contexts.
+     */
+    public interface ToroidalFunctionContext extends FunctionContext {
+        double x();
+        double y();
+        double z();
+    }
+
+    /**
      * A FunctionContext that offsets blockX and blockZ by a fixed amount.
      * Used to evaluate noise at the wrapped (opposite-side) position.
      * Also serves as a recursion guard — blend() skips re-processing OffsetContexts.
      */
-    public static class OffsetContext implements FunctionContext {
+    public static class OffsetContext implements FunctionContext, ToroidalFunctionContext {
         protected FunctionContext original;
         protected double offsetX;
         protected double offsetZ;
@@ -244,9 +272,29 @@ public class ToroidalNoise implements DensityFunction {
         @Override public int blockY() { return original.blockY(); }
         @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
 
-        // @Override public double x() { return original.x() + offsetX; }
-        // @Override public double y() { return original.y(); }
-        // @Override public double z() { return original.z() + offsetZ; }
+        @Override
+        public double x() {
+            if (original instanceof ToroidalFunctionContext tc) {
+                return tc.x() + offsetX;
+            }
+            return original.blockX() + offsetX;
+        }
+
+        @Override
+        public double y() {
+            if (original instanceof ToroidalFunctionContext tc) {
+                return tc.y();
+            }
+            return original.blockY();
+        }
+
+        @Override
+        public double z() {
+            if (original instanceof ToroidalFunctionContext tc) {
+                return tc.z() + offsetZ;
+            }
+            return original.blockZ() + offsetZ;
+        }
     }
 
     /**

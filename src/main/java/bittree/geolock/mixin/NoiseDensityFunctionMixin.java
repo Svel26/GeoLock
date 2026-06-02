@@ -21,9 +21,12 @@ public class NoiseDensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(ToroidalNoise.remap(context, ctx -> 
-            this.noise.getValue((double)ctx.blockX() * this.xzScale, (double)ctx.blockY() * this.yScale, (double)ctx.blockZ() * this.xzScale)
-        ));
+        cir.setReturnValue(ToroidalNoise.remap(context, ctx -> {
+            double x = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.x() : ctx.blockX();
+            double y = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.y() : ctx.blockY();
+            double z = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.z() : ctx.blockZ();
+            return this.noise.getValue(x * this.xzScale, y * this.yScale, z * this.xzScale);
+        }));
     }
 
     @Inject(method = "fillArray([DLnet/minecraft/world/level/levelgen/DensityFunction$ContextProvider;)V", at = @At("HEAD"), cancellable = true)

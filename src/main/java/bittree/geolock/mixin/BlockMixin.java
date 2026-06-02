@@ -38,12 +38,9 @@ public class BlockMixin {
 
         BlockPos wrapped = geolock$getWrappedNeighborPos(adjacentPos, halfW, w);
         if (wrapped != null) {
-            BlockState adjacentState = activeLevel.getBlockState(wrapped);
-            if (state.skipRendering(adjacentState, face)) {
-                cir.setReturnValue(false);
-            } else {
-                cir.setReturnValue(!adjacentState.canOcclude());
-            }
+            // Recursively evaluate against the wrapped block using the full level to prevent Z-fighting
+            boolean shouldRender = Block.shouldRenderFace(state, activeLevel, pos, face, wrapped);
+            cir.setReturnValue(shouldRender);
         }
     }
 

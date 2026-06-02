@@ -93,14 +93,12 @@ public class WorldgenRandomMixin {
         if (wx == chunkX && wz == chunkZ) return;
 
         ci.cancel();
-
-        // Replicate vanilla seeding logic with wrapped coords.
-        // We create a temp random source seeded at worldSeed to generate i and j.
-        RandomSource temp = WorldgenRandom.Algorithm.LEGACY.newInstance(worldSeed);
-        long i = temp.nextLong();
-        long j = temp.nextLong();
-        long k = (long)wx * i ^ (long)wz * j ^ worldSeed;
-        ((RandomSource)(Object)this).setSeed(k);
+        IN_WRAP.set(true);
+        try {
+            ((WorldgenRandom)(Object)this).setLargeFeatureSeed(worldSeed, wx, wz);
+        } finally {
+            IN_WRAP.set(false);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -127,8 +125,12 @@ public class WorldgenRandomMixin {
         if (wx == chunkX && wz == chunkZ) return;
 
         ci.cancel();
-        long seed = (long)wx * 341873128712L + (long)wz * 132897987541L + worldSeed + (long)salt;
-        ((RandomSource)(Object)this).setSeed(seed);
+        IN_WRAP.set(true);
+        try {
+            ((WorldgenRandom)(Object)this).setLargeFeatureWithSalt(worldSeed, wx, wz, salt);
+        } finally {
+            IN_WRAP.set(false);
+        }
     }
 
     // -----------------------------------------------------------------------

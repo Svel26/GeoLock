@@ -18,8 +18,10 @@ public class ShiftBDensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(ToroidalNoise.remap(context, ctx -> 
-            this.offsetNoise.getValue((double)ctx.blockZ() * 0.25D, (double)ctx.blockX() * 0.25D, 0.0D) * 4.0D
-        ));
+        cir.setReturnValue(ToroidalNoise.remap(context, ctx -> {
+            double x = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.x() : ctx.blockX();
+            double z = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.z() : ctx.blockZ();
+            return this.offsetNoise.getValue(z * 0.25D, x * 0.25D, 0.0D) * 4.0D;
+        }));
     }
 }

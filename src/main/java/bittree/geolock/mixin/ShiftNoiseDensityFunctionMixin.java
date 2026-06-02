@@ -4,14 +4,16 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import bittree.geolock.GeolockServerConfig;
 import bittree.geolock.worldgen.ToroidalNoise;
 
-@Mixin(targets = "net.minecraft.world.level.levelgen.DensityFunctions$Shift")
-public class ShiftDensityFunctionMixin {
-    @Shadow @org.spongepowered.asm.mixin.Final private net.minecraft.world.level.levelgen.DensityFunction.NoiseHolder offsetNoise;
+@Mixin(targets = "net.minecraft.world.level.levelgen.DensityFunctions$ShiftNoise")
+public class ShiftNoiseDensityFunctionMixin {
+
+    @Shadow @org.spongepowered.asm.mixin.Final private net.minecraft.world.level.levelgen.DensityFunction.NoiseHolder shiftNoise;
 
     @Inject(method = "compute(Lnet/minecraft/world/level/levelgen/DensityFunction$FunctionContext;)D", at = @At("HEAD"), cancellable = true)
     private void onCompute(DensityFunction.FunctionContext context, CallbackInfoReturnable<Double> cir) {
@@ -22,7 +24,16 @@ public class ShiftDensityFunctionMixin {
             double x = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.x() : ctx.blockX();
             double y = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.y() : ctx.blockY();
             double z = ctx instanceof ToroidalNoise.ToroidalFunctionContext tc ? tc.z() : ctx.blockZ();
-            return this.offsetNoise.getValue(x * 0.25D, y * 0.25D, z * 0.25D) * 4.0D;
+            return this.shiftNoise.getValue(x * 0.25, y * 0.25, z * 0.25); // In vanilla ShiftNoise, the scale is typically hardcoded 0.25 for shift noise
         }));
+    }
+
+    @Inject(method = "fillArray([DLnet/minecraft/world/level/levelgen/DensityFunction$ContextProvider;)V", at = @At("HEAD"), cancellable = true)
+    private void onFillArray(double[] densities, DensityFunction.ContextProvider provider, CallbackInfo ci) {
+        if (!GeolockServerConfig.enableWorldLooping) {
+            return;
+        }
+        ci.cancel();
+        provider.fillAllDirectly(densities, (DensityFunction) (Object) this);
     }
 }
