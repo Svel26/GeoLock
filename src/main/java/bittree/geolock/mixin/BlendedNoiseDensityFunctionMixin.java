@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.synth.BlendedNoise;
 import bittree.geolock.GeolockServerConfig;
-import bittree.geolock.worldgen.CylindricalNoise;
+import bittree.geolock.worldgen.ToroidalNoise;
 
 @Mixin(BlendedNoise.class)
 public class BlendedNoiseDensityFunctionMixin {
@@ -22,7 +22,7 @@ public class BlendedNoiseDensityFunctionMixin {
 
         IN_COMPUTE.set(true);
         try {
-            cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
+            cir.setReturnValue(ToroidalNoise.remap(context, ctx -> 
                 ((BlendedNoise) (Object) this).compute(ctx)
             ));
         } finally {

@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import bittree.geolock.GeolockServerConfig;
-import bittree.geolock.worldgen.CylindricalNoise;
+import bittree.geolock.worldgen.ToroidalNoise;
 
 @Mixin(targets = "net.minecraft.world.level.levelgen.DensityFunctions$WeirdScaledSampler")
 public class WeirdScaledSamplerDensityFunctionMixin {
@@ -27,7 +27,7 @@ public class WeirdScaledSamplerDensityFunctionMixin {
 
         IN_COMPUTE.set(true);
         try {
-            cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
+            cir.setReturnValue(ToroidalNoise.remap(context, ctx -> 
                 this.transform(ctx, inputVal)
             ));
         } finally {

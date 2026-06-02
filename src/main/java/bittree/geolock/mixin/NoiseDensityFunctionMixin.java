@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import bittree.geolock.GeolockServerConfig;
-import bittree.geolock.worldgen.CylindricalNoise;
+import bittree.geolock.worldgen.ToroidalNoise;
 
 @Mixin(targets = "net.minecraft.world.level.levelgen.DensityFunctions$Noise")
 public class NoiseDensityFunctionMixin {
@@ -21,7 +21,7 @@ public class NoiseDensityFunctionMixin {
         if (!GeolockServerConfig.enableWorldLooping) {
             return;
         }
-        cir.setReturnValue(CylindricalNoise.remap(context, ctx -> 
+        cir.setReturnValue(ToroidalNoise.remap(context, ctx -> 
             this.noise.getValue((double)ctx.blockX() * this.xzScale, (double)ctx.blockY() * this.yScale, (double)ctx.blockZ() * this.xzScale)
         ));
     }

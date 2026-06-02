@@ -45,7 +45,7 @@ import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.core.Holder;
-import bittree.geolock.worldgen.CylindricalNoise;
+import bittree.geolock.worldgen.ToroidalNoise;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.minecraft.server.MinecraftServer;
@@ -266,7 +266,7 @@ public class Geolock
         if (original == null) {
             return null;
         }
-        return new CylindricalNoise(Holder.direct(original), width, isFinalDensity);
+        return new ToroidalNoise(Holder.direct(original), width, isFinalDensity);
     }
 
     @SubscribeEvent

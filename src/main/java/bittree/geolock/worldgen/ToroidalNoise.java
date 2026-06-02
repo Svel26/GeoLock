@@ -36,28 +36,26 @@ import bittree.geolock.GeolockServerConfig;
  * ----------
  * For finalDensity, coordinates outside the world boundary return -1000 (void).
  */
-public class CylindricalNoise implements DensityFunction {
-
-
+public class ToroidalNoise implements DensityFunction {
 
     private final Holder<DensityFunction> originalNoise;
     private final double worldWidth;
     private final double halfWidth;
     private final boolean isFinalDensity;
 
-    public static final MapCodec<CylindricalNoise> CODEC = RecordCodecBuilder.mapCodec(instance ->
+    public static final MapCodec<ToroidalNoise> CODEC = RecordCodecBuilder.mapCodec(instance ->
         instance.group(
-            DensityFunction.CODEC.fieldOf("noise").forGetter(CylindricalNoise::getOriginalNoise),
-            Codec.DOUBLE.fieldOf("world_width").forGetter(CylindricalNoise::getWorldWidth),
-            Codec.BOOL.optionalFieldOf("is_final_density", false).forGetter(CylindricalNoise::isFinalDensity)
-        ).apply(instance, CylindricalNoise::new)
+            DensityFunction.CODEC.fieldOf("noise").forGetter(ToroidalNoise::getOriginalNoise),
+            Codec.DOUBLE.fieldOf("world_width").forGetter(ToroidalNoise::getWorldWidth),
+            Codec.BOOL.optionalFieldOf("is_final_density", false).forGetter(ToroidalNoise::isFinalDensity)
+        ).apply(instance, ToroidalNoise::new)
     );
 
-    public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth) {
+    public ToroidalNoise(Holder<DensityFunction> originalNoise, double worldWidth) {
         this(originalNoise, worldWidth, false);
     }
 
-    public CylindricalNoise(Holder<DensityFunction> originalNoise, double worldWidth, boolean isFinalDensity) {
+    public ToroidalNoise(Holder<DensityFunction> originalNoise, double worldWidth, boolean isFinalDensity) {
         this.originalNoise = originalNoise;
         this.worldWidth = worldWidth;
         double width = GeolockServerConfig.enableWorldLooping ? GeolockServerConfig.worldBoundaryWidth : worldWidth;
@@ -81,7 +79,7 @@ public class CylindricalNoise implements DensityFunction {
 
     @Override
     public DensityFunction mapAll(Visitor visitor) {
-        return new CylindricalNoise(Holder.direct(this.originalNoise.value().mapAll(visitor)), this.worldWidth, this.isFinalDensity);
+        return new ToroidalNoise(Holder.direct(this.originalNoise.value().mapAll(visitor)), this.worldWidth, this.isFinalDensity);
     }
 
     @Override
@@ -132,38 +130,46 @@ public class CylindricalNoise implements DensityFunction {
             return evaluator.applyAsDouble(context);
         }
 
-        int x = context.blockX();
-        int z = context.blockZ();
-        int w = (int) GeolockServerConfig.worldBoundaryWidth;
-        int halfW = w / 2;
-        int blendW = (int) GeolockServerConfig.blendZoneWidth;
+        // 1. Maintain full floating-point precision for sampling symmetry
+        double x = context.blockX() + 0.5;
+        double z = context.blockZ() + 0.5;
+        double w = GeolockServerConfig.worldBoundaryWidth;
+        double halfW = w / 2.0;
+        double blendW = GeolockServerConfig.blendZoneWidth;
 
-        // Map global coordinates to local range [-halfW, halfW]
-        int xLocal = ((x + halfW) % w + w) % w - halfW;
-        int zLocal = ((z + halfW) % w + w) % w - halfW;
+        // 2. Map coordinates to local range [-halfW, halfW]
+        double xLocal = ((x + halfW) % w + w) % w - halfW;
+        double zLocal = ((z + halfW) % w + w) % w - halfW;
 
+        // 3. Calculate continuous X weights up to exactly 0.5 at the border
         double wx = 0.0;
         double offsetX = 0.0;
         if (xLocal > halfW - blendW) {
-            wx = 0.5 * smoothstep(((double)xLocal + 0.5 - (halfW - blendW)) / blendW);
+            double t = (xLocal - (halfW - blendW)) / blendW;
+            wx = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
             offsetX = -w;
         } else if (xLocal < -halfW + blendW) {
-            wx = 0.5 * smoothstep(((double)(-halfW + blendW) - ((double)xLocal + 0.5)) / blendW);
+            double t = (-halfW + blendW - xLocal) / blendW;
+            wx = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
             offsetX = w;
         }
 
+        // 4. Calculate continuous Z weights up to exactly 0.5 at the border
         double wz = 0.0;
         double offsetZ = 0.0;
         if (zLocal > halfW - blendW) {
-            wz = 0.5 * smoothstep(((double)zLocal + 0.5 - (halfW - blendW)) / blendW);
+            double t = (zLocal - (halfW - blendW)) / blendW;
+            wz = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
             offsetZ = -w;
         } else if (zLocal < -halfW + blendW) {
-            wz = 0.5 * smoothstep(((double)(-halfW + blendW) - ((double)zLocal + 0.5)) / blendW);
+            double t = (-halfW + blendW - zLocal) / blendW;
+            wz = 0.5 * smoothstep(Math.min(1.0, Math.max(0.0, t)));
             offsetZ = w;
         }
 
-        double dx = xLocal - x;
-        double dz = zLocal - z;
+        // Convert double deltas back to standard context offsets for evaluation
+        double dx = xLocal - (context.blockX() + 0.5);
+        double dz = zLocal - (context.blockZ() + 0.5);
 
         ReusableOffsetContext reusable = REUSABLE_CONTEXT.get();
 
@@ -203,11 +209,11 @@ public class CylindricalNoise implements DensityFunction {
             v11 = evaluator.applyAsDouble(reusable);
         }
 
-        // Bilinear interpolation
+        // Bilinear interpolation mapping
         return (1.0 - wx) * (1.0 - wz) * v00
-             +        wx  * (1.0 - wz) * v10
-             + (1.0 - wx) *        wz  * v01
-             +        wx  *        wz  * v11;
+             +        wx   * (1.0 - wz) * v10
+             + (1.0 - wx) * wz   * v01
+             +        wx   * wz   * v11;
     }
 
     // Kept for external compatibility
@@ -224,9 +230,9 @@ public class CylindricalNoise implements DensityFunction {
      * Also serves as a recursion guard — blend() skips re-processing OffsetContexts.
      */
     public static class OffsetContext implements FunctionContext {
-        private final FunctionContext original;
-        private final double offsetX;
-        private final double offsetZ;
+        protected FunctionContext original;
+        protected double offsetX;
+        protected double offsetZ;
 
         public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
             this.original = original;
@@ -237,6 +243,10 @@ public class CylindricalNoise implements DensityFunction {
         @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
         @Override public int blockY() { return original.blockY(); }
         @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
+
+        // @Override public double x() { return original.x() + offsetX; }
+        // @Override public double y() { return original.y(); }
+        // @Override public double z() { return original.z() + offsetZ; }
     }
 
     /**
@@ -244,10 +254,6 @@ public class CylindricalNoise implements DensityFunction {
      * during high-frequency world generation density evaluation.
      */
     public static class ReusableOffsetContext extends OffsetContext {
-        private FunctionContext original;
-        private double offsetX;
-        private double offsetZ;
-
         public ReusableOffsetContext() {
             super(null, 0, 0);
         }
@@ -257,10 +263,6 @@ public class CylindricalNoise implements DensityFunction {
             this.offsetX = offsetX;
             this.offsetZ = offsetZ;
         }
-
-        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
-        @Override public int blockY() { return original.blockY(); }
-        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
     }
 
     /**

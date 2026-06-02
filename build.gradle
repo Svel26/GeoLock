@@ -192,6 +192,26 @@ idea {
     }
 }
 
+tasks.register("runJavapMinecraft") {
+    doLast {
+        def javaHome = System.getProperty("java.home")
+        def javapExe = new File(javaHome, "bin/javap.exe")
+        if (!javapExe.exists()) {
+            javapExe = new File(javaHome, "bin/javap")
+        }
+        def outStream = new ByteArrayOutputStream()
+        exec {
+            commandLine javapExe.absolutePath, "-c", "-p", "-cp", sourceSets.main.compileClasspath.asPath, "net.minecraft.world.level.levelgen.NoiseChunk\$NoiseInterpolator"
+            standardOutput = outStream
+        }
+        def text = outStream.toString("UTF-8")
+        def outFile = new File("C:/Users/svenj/.gemini/antigravity/brain/e3c002ef-172f-4edf-b21a-5f796bab6a6d/scratch/noise_interpolator.txt")
+        outFile.parentFile.mkdirs()
+        outFile.text = text
+        println "Wrote javap output to ${outFile.absolutePath}"
+    }
+}
+
 tasks.register("runJavap") {
     doLast {
         def javaHome = System.getProperty("java.home")
@@ -240,4 +260,12 @@ tasks.register("runJavapUtf8") {
         println "Wrote javap output to ${outFile.absolutePath}"
     }
 }
+tasks.register("runInspector", JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "bittree.geolock.DebugInspector"
+}
+
+
+
+
 
