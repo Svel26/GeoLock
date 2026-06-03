@@ -11,5 +11,5 @@ public class CarverCheck {
     @Inject(method = "setLargeFeatureSeed(JII)V", at = @At("HEAD"))
     private void check2(long l, int i, int j, CallbackInfo ci) {}
     @Inject(method = "setDecorationSeed(JII)J", at = @At("HEAD"))
-    private void check3(long l, int i, int j, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable cir) {}
+    private void check3(long l, int i, int j, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Long> cir) {}
 }

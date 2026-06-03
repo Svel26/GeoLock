@@ -1,7 +1,6 @@
 package bittree.geolock.mixin;
 
 import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.util.RandomSource;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

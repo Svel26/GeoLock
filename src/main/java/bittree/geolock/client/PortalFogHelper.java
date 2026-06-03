@@ -40,10 +40,10 @@ public class PortalFogHelper {
                 // If the player's eyes are in water or lava, we force that fluid fog
                 net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
                 if (mc.player != null) {
-                    if (mc.player.isEyeInFluid(net.minecraft.tags.FluidTags.WATER)) {
+                    if (mc.player.isEyeInFluidType(net.minecraft.world.level.material.Fluids.WATER.getFluidType())) {
                         return FogType.WATER;
                     }
-                    if (mc.player.isEyeInFluid(net.minecraft.tags.FluidTags.LAVA)) {
+                    if (mc.player.isEyeInFluidType(net.minecraft.world.level.material.Fluids.LAVA.getFluidType())) {
                         return FogType.LAVA;
                     }
                 }

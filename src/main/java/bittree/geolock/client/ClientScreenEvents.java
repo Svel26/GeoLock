@@ -8,12 +8,9 @@ import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.components.tabs.TabManager;
 import net.minecraft.client.gui.screens.worldselection.CreateWorldScreen;
 import net.minecraft.network.chat.Component;
-import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 
-@EventBusSubscriber(modid = Geolock.MODID, bus = EventBusSubscriber.Bus.GAME, value = Dist.CLIENT)
 public class ClientScreenEvents {
     public static double tempNewWorldSize = 20000.0;
     public static boolean hasTempNewWorldSize = false;

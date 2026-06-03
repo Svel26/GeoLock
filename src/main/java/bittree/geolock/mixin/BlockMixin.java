@@ -51,7 +51,6 @@ public class BlockMixin {
         int z = pos.getZ();
         int y = pos.getY();
         int h = (int) halfW;
-        int w = (int) width;
 
         boolean remapped = false;
         if (x == h) { x = -h; remapped = true; }

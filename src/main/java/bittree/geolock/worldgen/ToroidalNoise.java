@@ -166,7 +166,7 @@ public class ToroidalNoise implements DensityFunction {
         double z();
     }
 
-    public static class OffsetContext implements FunctionContext, ToroidalFunctionContext {
+    public static class OffsetContext implements ToroidalFunctionContext {
         protected FunctionContext original;
         protected double offsetX;
         protected double offsetZ;

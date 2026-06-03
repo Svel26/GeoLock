@@ -23,6 +23,7 @@ public class LevelMixin {
     @Unique
     private static final ThreadLocal<Boolean> geolock$inGetFluidState = ThreadLocal.withInitial(() -> false);
 
+    @SuppressWarnings("resource")
     @Inject(method = "getBlockState", at = @At("HEAD"), cancellable = true)
     private void geolock$onGetBlockState(BlockPos pos, CallbackInfoReturnable<BlockState> cir) {
         if (!GeolockServerConfig.enableWorldLooping) {
@@ -59,6 +60,7 @@ public class LevelMixin {
         }
     }
 
+    @SuppressWarnings("resource")
     @Inject(method = "getFluidState", at = @At("HEAD"), cancellable = true)
     private void geolock$onGetFluidState(BlockPos pos, CallbackInfoReturnable<FluidState> cir) {
         if (!GeolockServerConfig.enableWorldLooping) {
@@ -95,6 +97,7 @@ public class LevelMixin {
         }
     }
 
+    @SuppressWarnings("resource")
     @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z",
             at = @At("HEAD"))
     private void geolock$onSetBlock(BlockPos pos, BlockState state, int flags, int recursionLimit, CallbackInfoReturnable<Boolean> cir) {
