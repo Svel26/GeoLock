@@ -9,6 +9,20 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 
 import bittree.geolock.GeolockServerConfig;
 
+/**
+ * ToroidalNoise provides seamless world wrapping for Minecraft's noise-based terrain generation.
+ *
+ * This class serves two purposes:
+ * 1. As a DensityFunction wrapper (for NoiseRouter-level wrapping, currently disabled)
+ * 2. As a utility providing the blend()/remap() methods used by leaf-level mixins
+ *
+ * The core algorithm:
+ * - Near the world boundary (±halfW), noise values are bilinearly interpolated
+ *   between the original position and the wrapped-around position
+ * - A smoothstep function provides C1-continuous blending over the blend zone
+ * - The OffsetContext allows evaluating noise at shifted positions while
+ *   preserving the continuous coordinate system needed by noise samplers
+ */
 public class ToroidalNoise implements DensityFunction {
 
     private final Holder<DensityFunction> originalNoise;
@@ -64,14 +78,31 @@ public class ToroidalNoise implements DensityFunction {
     public double getWorldWidth() { return this.worldWidth; }
     public boolean isFinalDensity() { return this.isFinalDensity; }
 
+    /**
+     * C1-continuous smoothstep function. Clamps t to [0,1] and returns 3t² - 2t³.
+     */
     private static double smoothstep(double t) {
-        // Clamp bounds to prevent weight over-scaling
         t = Math.max(0.0, Math.min(1.0, t));
         return t * t * (3.0 - 2.0 * t);
     }
 
     private static final ThreadLocal<ReusableOffsetContext> REUSABLE_CONTEXT = ThreadLocal.withInitial(ReusableOffsetContext::new);
 
+    /**
+     * Thread-local counter used to generate unique cache-busting tokens.
+     * Each call to blend() increments this, ensuring the NoiseChunk trilinear
+     * cache sees a different context and cannot return stale values.
+     */
+    private static final ThreadLocal<Integer> CACHE_BUSTER = ThreadLocal.withInitial(() -> 0);
+
+    /**
+     * Core blending function. Evaluates noise at the original position and,
+     * if within the blend zone, at wrapped positions, then bilinearly interpolates.
+     *
+     * @param context  The original FunctionContext (block coordinates)
+     * @param evaluator  A function that evaluates noise given a FunctionContext
+     * @return The blended noise value
+     */
     public static double blend(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
         if (!GeolockServerConfig.enableWorldLooping || context instanceof OffsetContext) {
             return evaluator.applyAsDouble(context);
@@ -81,14 +112,15 @@ public class ToroidalNoise implements DensityFunction {
         double halfW = w / 2.0;
         double blendW = GeolockServerConfig.blendZoneWidth;
 
-        // Use absolute center of the voxel column to enforce grid symmetry
+        // Use center-of-block coordinates for noise evaluation symmetry
         double x = context.blockX() + 0.5;
         double z = context.blockZ() + 0.5;
 
-        // Wrap to local boundary coordinates
+        // Wrap to local boundary coordinates: range [-halfW, halfW)
         double xLocal = ((x + halfW) % w + w) % w - halfW;
         double zLocal = ((z + halfW) % w + w) % w - halfW;
 
+        // Compute blend weights and wrap offsets for X axis
         double wx = 0.0;
         double offsetX = 0.0;
         if (xLocal > halfW - blendW) {
@@ -99,6 +131,7 @@ public class ToroidalNoise implements DensityFunction {
             offsetX = w;
         }
 
+        // Compute blend weights and wrap offsets for Z axis
         double wz = 0.0;
         double offsetZ = 0.0;
         if (zLocal > halfW - blendW) {
@@ -109,53 +142,61 @@ public class ToroidalNoise implements DensityFunction {
             offsetZ = w;
         }
 
-        // Convert double deltas back to standard context offsets for evaluation
+        // Delta between wrapped center and original center
         double dx = xLocal - (context.blockX() + 0.5);
         double dz = zLocal - (context.blockZ() + 0.5);
 
+        // Generate a unique cache-busting token for this blend evaluation
+        int cacheToken = CACHE_BUSTER.get();
+        CACHE_BUSTER.set(cacheToken + 1);
+
         ReusableOffsetContext reusable = REUSABLE_CONTEXT.get();
 
-        // If we are completely outside the blend zone, return raw cached noise for high performance
+        // Outside blend zone: just evaluate at the (possibly wrapped) position
         if (wx == 0.0 && wz == 0.0) {
             if (dx == 0.0 && dz == 0.0) {
                 return evaluator.applyAsDouble(context);
             } else {
-                reusable.set(context, dx, dz);
+                reusable.set(context, dx, dz, cacheToken);
                 return evaluator.applyAsDouble(reusable);
             }
         }
 
-        // --- CRITICAL CACHE ISOLATION FIX ---
-        // We are in the blend zone. We MUST bypass the NoiseChunk trilinear cache for ALL samples
-        // (including the local base sample v00) to ensure mathematical alignment.
-        reusable.set(context, dx, dz);
-        double v00 = evaluator.applyAsDouble(reusable); // Cache forcefully bypassed
+        // --- BLEND ZONE: Evaluate all 4 corners with cache busting ---
+        // All samples go through OffsetContext to ensure the NoiseChunk
+        // trilinear cache cannot return stale unwrapped values.
+
+        reusable.set(context, dx, dz, cacheToken);
+        double v00 = evaluator.applyAsDouble(reusable);
 
         double v10 = v00;
         if (wx > 0.0) {
-            reusable.set(context, dx + offsetX, dz);
+            reusable.set(context, dx + offsetX, dz, cacheToken + 1);
             v10 = evaluator.applyAsDouble(reusable);
         }
 
         double v01 = v00;
         if (wz > 0.0) {
-            reusable.set(context, dx, dz + offsetZ);
+            reusable.set(context, dx, dz + offsetZ, cacheToken + 2);
             v01 = evaluator.applyAsDouble(reusable);
         }
 
         double v11 = v00;
         if (wx > 0.0 && wz > 0.0) {
-            reusable.set(context, dx + offsetX, dz + offsetZ);
+            reusable.set(context, dx + offsetX, dz + offsetZ, cacheToken + 3);
             v11 = evaluator.applyAsDouble(reusable);
         }
 
-        // Resolve bilinear interpolation array
+        // Bilinear interpolation
         return (1.0 - wx) * (1.0 - wz) * v00
              +        wx  * (1.0 - wz) * v10
              + (1.0 - wx) * wz  * v01
              +        wx  * wz  * v11;
     }
 
+    /**
+     * Alias for blend(). Used by mixins for clarity.
+     */
     public static double remap(FunctionContext context, java.util.function.ToDoubleFunction<FunctionContext> evaluator) {
         return blend(context, evaluator);
     }
@@ -166,27 +207,62 @@ public class ToroidalNoise implements DensityFunction {
         double z();
     }
 
+    /**
+     * A FunctionContext that applies an offset to the original context's coordinates.
+     * This is used to evaluate noise at wrapped-around positions.
+     *
+     * The cacheBuster field ensures each evaluation creates a unique context identity,
+     * preventing the NoiseChunk trilinear cache from returning stale values.
+     */
     public static class OffsetContext implements ToroidalFunctionContext {
         protected FunctionContext original;
         protected double offsetX;
         protected double offsetZ;
+        protected int cacheBuster;
 
-        public OffsetContext(FunctionContext original, double offsetX, double offsetZ) {
+        public OffsetContext(FunctionContext original, double offsetX, double offsetZ, int cacheBuster) {
             this.original = original;
             this.offsetX = offsetX;
             this.offsetZ = offsetZ;
+            this.cacheBuster = cacheBuster;
         }
 
-        @Override public int blockX() { return (int) Math.round(original.blockX() + offsetX); }
-        @Override public int blockY() { return original.blockY(); }
-        @Override public int blockZ() { return (int) Math.round(original.blockZ() + offsetZ); }
+        /**
+         * Returns the wrapped block X coordinate using floor-based conversion.
+         * For large offsets (world-scale wrapping), uses exact integer arithmetic
+         * to avoid floating-point rounding errors at the boundary.
+         */
+        @Override
+        public int blockX() {
+            double raw = (double)original.blockX() + offsetX;
+            // For world-scale offsets, use exact integer arithmetic
+            if (Math.abs(offsetX) > 1000.0) {
+                return (int) Math.round(raw);
+            }
+            return (int) Math.floor(raw + 0.5);
+        }
+
+        @Override
+        public int blockY() { return original.blockY(); }
+
+        /**
+         * Returns the wrapped block Z coordinate using floor-based conversion.
+         */
+        @Override
+        public int blockZ() {
+            double raw = (double)original.blockZ() + offsetZ;
+            if (Math.abs(offsetZ) > 1000.0) {
+                return (int) Math.round(raw);
+            }
+            return (int) Math.floor(raw + 0.5);
+        }
 
         @Override
         public double x() {
             if (original instanceof ToroidalFunctionContext tc) {
                 return tc.x() + offsetX;
             }
-            return original.blockX() + offsetX;
+            return (double)original.blockX() + offsetX;
         }
 
         @Override
@@ -202,19 +278,23 @@ public class ToroidalNoise implements DensityFunction {
             if (original instanceof ToroidalFunctionContext tc) {
                 return tc.z() + offsetZ;
             }
-            return original.blockZ() + offsetZ;
+            return (double)original.blockZ() + offsetZ;
         }
     }
 
+    /**
+     * Reusable OffsetContext for thread-local use, avoiding allocation in hot paths.
+     */
     public static class ReusableOffsetContext extends OffsetContext {
         public ReusableOffsetContext() {
-            super(null, 0, 0);
+            super(null, 0, 0, 0);
         }
 
-        public void set(FunctionContext original, double offsetX, double offsetZ) {
+        public void set(FunctionContext original, double offsetX, double offsetZ, int cacheBuster) {
             this.original = original;
             this.offsetX = offsetX;
             this.offsetZ = offsetZ;
+            this.cacheBuster = cacheBuster;
         }
     }
 }

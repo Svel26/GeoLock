@@ -1,6 +1,7 @@
 package bittree.geolock.mixin;
 
 import bittree.geolock.GeolockServerConfig;
+import bittree.geolock.worldgen.CoordWrappingUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -33,35 +34,11 @@ public class BlockMixin {
             return;
         }
 
-        double w = GeolockServerConfig.worldBoundaryWidth;
-        double halfW = w / 2.0;
-
-        BlockPos wrapped = geolock$getWrappedNeighborPos(adjacentPos, halfW, w);
-        if (wrapped != null) {
+        BlockPos wrapped = CoordWrappingUtil.wrapBlockPos(adjacentPos);
+        if (wrapped != adjacentPos) {
             // Recursively evaluate against the wrapped block using the full level to prevent Z-fighting
             boolean shouldRender = Block.shouldRenderFace(state, activeLevel, pos, face, wrapped);
             cir.setReturnValue(shouldRender);
         }
-    }
-
-
-    @Unique
-    private static BlockPos geolock$getWrappedNeighborPos(BlockPos pos, double halfW, double width) {
-        int x = pos.getX();
-        int z = pos.getZ();
-        int y = pos.getY();
-        int h = (int) halfW;
-
-        boolean remapped = false;
-        if (x == h) { x = -h; remapped = true; }
-        else if (x == -h - 1) { x = h - 1; remapped = true; }
-
-        if (z == h) { z = -h; remapped = true; }
-        else if (z == -h - 1) { z = h - 1; remapped = true; }
-
-        if (remapped) {
-            return new BlockPos(x, y, z);
-        }
-        return null;
     }
 }

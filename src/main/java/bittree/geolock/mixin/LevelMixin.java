@@ -1,6 +1,7 @@
 package bittree.geolock.mixin;
 
 import bittree.geolock.GeolockServerConfig;
+import bittree.geolock.worldgen.CoordWrappingUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -34,25 +35,11 @@ public class LevelMixin {
             if (geolock$inGetBlockState.get()) {
                 return;
             }
-            double w = GeolockServerConfig.worldBoundaryWidth;
-            double halfW = w / 2.0;
-            int x = pos.getX();
-            int z = pos.getZ();
-
-            boolean needsWrap = false;
-            if (x < -halfW || x >= halfW) {
-                x = (int) Math.floor(((x + halfW) % w + w) % w - halfW);
-                needsWrap = true;
-            }
-            if (z < -halfW || z >= halfW) {
-                z = (int) Math.floor(((z + halfW) % w + w) % w - halfW);
-                needsWrap = true;
-            }
-
-            if (needsWrap) {
+            BlockPos wrapped = CoordWrappingUtil.wrapBlockPos(pos);
+            if (wrapped != pos) {
                 geolock$inGetBlockState.set(true);
                 try {
-                    cir.setReturnValue(level.getBlockState(new BlockPos(x, pos.getY(), z)));
+                    cir.setReturnValue(level.getBlockState(wrapped));
                 } finally {
                     geolock$inGetBlockState.set(false);
                 }
@@ -71,25 +58,11 @@ public class LevelMixin {
             if (geolock$inGetFluidState.get()) {
                 return;
             }
-            double w = GeolockServerConfig.worldBoundaryWidth;
-            double halfW = w / 2.0;
-            int x = pos.getX();
-            int z = pos.getZ();
-
-            boolean needsWrap = false;
-            if (x < -halfW || x >= halfW) {
-                x = (int) Math.floor(((x + halfW) % w + w) % w - halfW);
-                needsWrap = true;
-            }
-            if (z < -halfW || z >= halfW) {
-                z = (int) Math.floor(((z + halfW) % w + w) % w - halfW);
-                needsWrap = true;
-            }
-
-            if (needsWrap) {
+            BlockPos wrapped = CoordWrappingUtil.wrapBlockPos(pos);
+            if (wrapped != pos) {
                 geolock$inGetFluidState.set(true);
                 try {
-                    cir.setReturnValue(level.getFluidState(new BlockPos(x, pos.getY(), z)));
+                    cir.setReturnValue(level.getFluidState(wrapped));
                 } finally {
                     geolock$inGetFluidState.set(false);
                 }
@@ -116,8 +89,8 @@ public class LevelMixin {
 
         geolock$inSynchronization.set(true);
         try {
-            double w = GeolockServerConfig.worldBoundaryWidth;
-            double halfW = w / 2.0;
+            double halfW = CoordWrappingUtil.halfWidth();
+            double w = CoordWrappingUtil.worldWidth();
             List<BlockPos> syncedPosList = geolock$getSynchronizedPositions(pos, halfW, w);
             for (BlockPos targetPos : syncedPosList) {
                 BlockState current = level.getBlockState(targetPos);

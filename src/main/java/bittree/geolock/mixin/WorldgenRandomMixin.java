@@ -133,40 +133,14 @@ public class WorldgenRandomMixin {
     }
 
     // -----------------------------------------------------------------------
-    // Coordinate wrapping helpers
+    // Coordinate wrapping helpers — delegated to CoordWrappingUtil
     // -----------------------------------------------------------------------
 
-    /**
-     * Wraps a CHUNK coordinate so that chunks at ±halfWidthInChunks share a seed.
-     *
-     * Example (worldWidth=20000, worldWidthInChunks=1250, half=625):
-     *   wrapChunkCoord(-625) = -625   (left edge, identity)
-     *   wrapChunkCoord(  0 ) =    0   (center, identity)
-     *   wrapChunkCoord( 624) =  624   (one chunk before right edge)
-     *   wrapChunkCoord( 625) = -625   (right edge → same as left edge, seamless!)
-     */
-    private static int cachedWorldWidthInChunks = -1;
-    private static int cachedHalf = -1;
-
-    private static void initCache() {
-        if (cachedWorldWidthInChunks == -1) {
-            double width = GeolockServerConfig.worldBoundaryWidth;
-            cachedWorldWidthInChunks = (int) Math.round(width / 16.0);
-            cachedHalf = cachedWorldWidthInChunks / 2;
-        }
-    }
-
     private static int wrapChunkCoord(int coord) {
-        initCache();
-        return Math.floorMod(coord + cachedHalf, cachedWorldWidthInChunks) - cachedHalf;
+        return bittree.geolock.worldgen.CoordWrappingUtil.wrapChunkCoord(coord);
     }
 
-    /**
-     * Wraps a BLOCK coordinate (chunkX*16 style) through chunk-space wrapping.
-     */
     private static int wrapBlockCoord(int blockCoord) {
-        int chunkCoord = Math.floorDiv(blockCoord, 16);
-        int remainder = Math.floorMod(blockCoord, 16);
-        return wrapChunkCoord(chunkCoord) * 16 + remainder;
+        return bittree.geolock.worldgen.CoordWrappingUtil.wrapBlockCoord(blockCoord);
     }
 }

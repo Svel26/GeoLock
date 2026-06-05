@@ -18,7 +18,7 @@ public class GeolockServerConfig {
     public static boolean enableWorldLooping = true;
     public static double worldBoundaryWidth = 20000.0;
     public static double teleportBufferZone = 5.0;
-    public static double blendZoneWidth = 128.0;
+    public static double blendZoneWidth = 256.0;
     public static boolean logVehicleTeleports = true;
     public static boolean debugResourcePlacement = false;
 

@@ -2,6 +2,7 @@ package bittree.geolock;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -33,18 +34,13 @@ import bittree.geolock.registry.GeoNoiseRegistry;
 import bittree.geolock.worldgen.PortalStitcher;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
-import net.minecraft.world.level.levelgen.NoiseRouter;
-import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
-import net.minecraft.world.level.levelgen.DensityFunction;
-import net.minecraft.core.Holder;
-import bittree.geolock.worldgen.ToroidalNoise;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
+import net.minecraft.world.level.levelgen.NoiseRouter;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
-import net.minecraft.server.MinecraftServer;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(Geolock.MODID)
@@ -208,62 +204,8 @@ public class Geolock
     @SubscribeEvent
     public static void onServerAboutToStart(ServerAboutToStartEvent event)
     {
-        // Disable root-level NoiseRouter wrapping as it causes exponential evaluations (4^D)
-        // when combined with leaf-level mixins, resulting in severe chunk generation lag.
-        // The leaf-level mixins are sufficient to make all noise and biomes loop seamlessly.
-        // wrapOverworldNoiseRouter(event.getServer());
-    }
-
-    @SuppressWarnings("unused")
-    private static void wrapOverworldNoiseRouter(MinecraftServer server) {
-        if (!GeolockServerConfig.enableWorldLooping) {
-            return;
-        }
-
-        try {
-            net.minecraft.core.RegistryAccess registryAccess = server.registryAccess();
-            net.minecraft.core.Registry<NoiseGeneratorSettings> registry = registryAccess.registryOrThrow(net.minecraft.core.registries.Registries.NOISE_SETTINGS);
-            NoiseGeneratorSettings settings = registry.get(net.minecraft.world.level.levelgen.NoiseGeneratorSettings.OVERWORLD);
-            if (settings != null) {
-                NoiseRouter original = settings.noiseRouter();
-                if (original != null) {
-                    double width = GeolockServerConfig.worldBoundaryWidth;
-                    NoiseRouter wrapped = new NoiseRouter(
-                        wrapDensityFunction(original.barrierNoise(), width, false),
-                        wrapDensityFunction(original.fluidLevelFloodednessNoise(), width, false),
-                        wrapDensityFunction(original.fluidLevelSpreadNoise(), width, false),
-                        wrapDensityFunction(original.lavaNoise(), width, false),
-                        wrapDensityFunction(original.temperature(), width, false),
-                        wrapDensityFunction(original.vegetation(), width, false),
-                        wrapDensityFunction(original.continents(), width, false),
-                        wrapDensityFunction(original.erosion(), width, false),
-                        wrapDensityFunction(original.depth(), width, false),
-                        wrapDensityFunction(original.ridges(), width, false),
-                        wrapDensityFunction(original.initialDensityWithoutJaggedness(), width, false),
-                        wrapDensityFunction(original.finalDensity(), width, true),
-                        wrapDensityFunction(original.veinToggle(), width, false),
-                        wrapDensityFunction(original.veinRidged(), width, false),
-                        wrapDensityFunction(original.veinGap(), width, false)
-                    );
-                    
-                    // Reflectively invoke setNoiseRouter(wrapped)
-                    java.lang.reflect.Method setter = NoiseGeneratorSettings.class.getDeclaredMethod("setNoiseRouter", NoiseRouter.class);
-                    setter.setAccessible(true);
-                    setter.invoke(settings, wrapped);
-                    
-                    LOGGER.info("[GeoLock] Successfully wrapped Overworld NoiseRouter in ServerAboutToStartEvent.");
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.error("[GeoLock] Failed to wrap Overworld NoiseRouter in ServerAboutToStartEvent", e);
-        }
-    }
-
-    private static DensityFunction wrapDensityFunction(DensityFunction original, double width, boolean isFinalDensity) {
-        if (original == null) {
-            return null;
-        }
-        return new ToroidalNoise(Holder.direct(original), width, isFinalDensity);
+        // NoiseRouter wrapping is handled by leaf-level mixins.
+        // See NoiseDensityFunctionMixin, ShiftedNoiseDensityFunctionMixin, etc.
     }
 
     @SubscribeEvent
@@ -282,10 +224,14 @@ public class Geolock
             return;
         }
 
+        // When Immersive Portals are active, pre-load chunks at boundaries
+        // for smooth portal transitions. Refresh every 10 ticks for responsiveness.
         if (portalsActive) {
-            if (serverPlayer.tickCount % 20 == 0) {
+            if (serverPlayer.tickCount % 10 == 0) {
                 double w = GeolockServerConfig.worldBoundaryWidth;
-                double threshold = serverPlayer.getServer().getPlayerList().getViewDistance() * 16.0 + 32.0;
+                // Use a generous threshold: view distance + blend zone + buffer
+                double threshold = serverPlayer.getServer().getPlayerList().getViewDistance() * 16.0
+                                 + GeolockServerConfig.blendZoneWidth + 64.0;
                 bittree.geolock.worldgen.PortalChunkLoaderHelper.updatePlayerChunkLoaders(
                     serverPlayer, serverPlayer.getX(), serverPlayer.getZ(), w, threshold
                 );
@@ -293,71 +239,10 @@ public class Geolock
             return;
         }
 
-        if (serverPlayer.tickCount % 100 == 0) {
-            LOGGER.info("[GeoLock] Debug: onPlayerTick fired for {}, X={}, Y={}, Z={}", 
-                        serverPlayer.getName().getString(), serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ());
-        }
-
-        double x = serverPlayer.getX();
-        double z = serverPlayer.getZ();
-        double w = GeolockServerConfig.worldBoundaryWidth;
-        double halfW = w / 2.0;
-        double buffer = GeolockServerConfig.teleportBufferZone;
-
-        boolean needTeleport = false;
-        double targetX = x;
-        double targetZ = z;
-
-        if (x > halfW) {
-            targetX = -halfW + buffer;
-            needTeleport = true;
-        } else if (x < -halfW) {
-            targetX = halfW - buffer;
-            needTeleport = true;
-        }
-
-        if (z > halfW) {
-            targetZ = -halfW + buffer;
-            needTeleport = true;
-        } else if (z < -halfW) {
-            targetZ = halfW - buffer;
-            needTeleport = true;
-        }
-
-        if (needTeleport) {
-            ServerLevel serverLevel = (ServerLevel) serverPlayer.level();
-            Entity vehicle = serverPlayer.getVehicle();
-
-            if (vehicle != null) {
-                if (GeolockServerConfig.logVehicleTeleports) {
-                    LOGGER.info("[GeoLock] Teleporting player {} and vehicle {} due to world loop from X={}, Z={} to X={}, Z={}", 
-                                serverPlayer.getName().getString(), vehicle.getName().getString(), x, z, targetX, targetZ);
-                }
-                
-                serverPlayer.stopRiding();
-                
-                vehicle.teleportTo(
-                    serverLevel, targetX, vehicle.getY(), targetZ, 
-                    java.util.Collections.emptySet(), vehicle.getYRot(), vehicle.getXRot()
-                );
-                
-                serverPlayer.teleportTo(
-                    serverLevel, targetX, serverPlayer.getY(), targetZ, 
-                    java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
-                );
-                
-                serverPlayer.startRiding(vehicle, true);
-            } else {
-                if (GeolockServerConfig.logVehicleTeleports) {
-                    LOGGER.info("[GeoLock] Teleporting player {} due to world loop from X={}, Z={} to X={}, Z={}", 
-                                serverPlayer.getName().getString(), x, z, targetX, targetZ);
-                }
-                
-                serverPlayer.teleportTo(
-                    serverLevel, targetX, serverPlayer.getY(), targetZ, 
-                    java.util.Collections.emptySet(), serverPlayer.getYRot(), serverPlayer.getXRot()
-                );
-            }
+        // Fallback: if portals are not active, log a warning periodically
+        if (serverPlayer.tickCount % 200 == 0) {
+            LOGGER.warn("[GeoLock] Portals not active for player {} at X={}, Z={}. World looping may not be seamless.",
+                        serverPlayer.getName().getString(), serverPlayer.getX(), serverPlayer.getZ());
         }
     }
 

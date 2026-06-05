@@ -29,6 +29,9 @@ public class PortalStitcher {
 
     /**
      * Stitches the overworld boundaries using Immersive Portals.
+     * Creates a single WrappingZone that covers the entire world area,
+     * wrapping both X and Z axes for seamless toroidal world looping.
+     *
      * @return true if Immersive Portals wrapping zone was successfully verified or created; false otherwise.
      */
     public static boolean stitchOverworld(ServerLevel level) {
@@ -37,10 +40,11 @@ public class PortalStitcher {
         }
 
         try {
-            double w = GeolockServerConfig.worldBoundaryWidth;
-            double halfW = w / 2.0;
+            double halfW = CoordWrappingUtil.halfWidth();
+            double w = CoordWrappingUtil.worldWidth();
+            double blendW = GeolockServerConfig.blendZoneWidth;
 
-            LOGGER.info("[GeoLock] Ensuring correct world wrapping portals at X = +-{}", halfW);
+            LOGGER.info("[GeoLock] Ensuring correct world wrapping portals at X/Z = +-{}", halfW);
 
             // Reflection-based classes for Immersive Portals
             Class<?> portalClass = Class.forName("qouteall.imm_ptl.core.portal.Portal");
@@ -97,28 +101,27 @@ public class PortalStitcher {
                         }
                         AABB area = (AABB) getAreaMethod.invoke(zoneObj);
                         
-                        // Let's inspect portals list in the zone
+                        // Inspect portals list in the zone
                         java.lang.reflect.Field portalsField = wrappingZoneClass.getField("portals");
                         List<?> zonePortals = (List<?>) portalsField.get(zoneObj);
-                        LOGGER.info("[GeoLock] Wrapping zone [{}]: area={}, portalsCount={}", 
+                        LOGGER.info("[GeoLock] Wrapping zone [{}]: area={}, portalsCount={}",
                                     i, area, zonePortals == null ? "null" : zonePortals.size());
-                        if (zonePortals != null) {
-                            for (Object p : zonePortals) {
-                                LOGGER.info("[GeoLock]   Portal: {}", p);
-                            }
-                        }
 
                         if (area != null) {
                             double currentMinX = area.minX;
                             double currentMaxX = area.maxX;
                             double currentMinZ = area.minZ;
                             double currentMaxZ = area.maxZ;
-                            if (Math.abs(currentMinX - (-halfW)) < 2.0 && Math.abs(currentMaxX - (halfW - 1)) < 2.0 &&
-                                Math.abs(currentMinZ - (-halfW)) < 2.0 && Math.abs(currentMaxZ - (halfW - 1)) < 2.0) {
+                            // Check if zone covers the full world area (with blend zone margin)
+                            double expectedMin = -halfW - blendW;
+                            double expectedMax = halfW - 1 + blendW;
+                            if (Math.abs(currentMinX - expectedMin) < 2.0 && Math.abs(currentMaxX - expectedMax) < 2.0 &&
+                                Math.abs(currentMinZ - expectedMin) < 2.0 && Math.abs(currentMaxZ - expectedMax) < 2.0) {
                                 zoneMatches = true;
+                                LOGGER.info("[GeoLock] Existing wrapping zone matches expected area (with blend margin).");
                             } else {
-                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected X/Z range [{}, {}], got X=[{}, {}], Z=[{}, {}]). Removing old zone.", 
-                                            -halfW, halfW - 1, currentMinX, currentMaxX, currentMinZ, currentMaxZ);
+                                LOGGER.info("[GeoLock] Existing wrapping zone boundary mismatch (expected X/Z range [{}, {}], got X=[{}, {}], Z=[{}, {}]). Removing old zone.",
+                                            expectedMin, expectedMax, currentMinX, currentMaxX, currentMinZ, currentMaxZ);
                                 java.lang.reflect.Method removeFromWorldMethod = findMethod(wrappingZoneClass, "removeFromWorld", 0);
                                 if (removeFromWorldMethod == null) {
                                     throw new NoSuchMethodException("removeFromWorld method not found");
@@ -131,11 +134,15 @@ public class PortalStitcher {
             }
 
             if (!zoneMatches) {
-                LOGGER.info("[GeoLock] Creating native inward wrapping zone at X range [{}, {}], Z range [{}, {}]", -halfW, halfW - 1, -halfW, halfW - 1);
-                int xMin = (int) -halfW;
-                int xMax = (int) (halfW - 1);
-                int zMin = (int) -halfW;
-                int zMax = (int) (halfW - 1);
+                // Create zone that covers the full world area PLUS the blend zone margin
+                // This ensures the portal wrapping extends far enough to cover the noise blend zone
+                int xMin = (int) Math.floor(-halfW - blendW);
+                int xMax = (int) Math.ceil(halfW - 1 + blendW);
+                int zMin = (int) Math.floor(-halfW - blendW);
+                int zMax = (int) Math.ceil(halfW - 1 + blendW);
+                
+                LOGGER.info("[GeoLock] Creating native inward wrapping zone at X range [{}, {}], Z range [{}, {}] (with {} block blend margin)",
+                            xMin, xMax, zMin, zMax, (int)blendW);
                 
                 java.lang.reflect.Method invokeAddWrappingZoneMethod = findMethod(worldWrappingPortalClass, "invokeAddWrappingZone", 7);
                 if (invokeAddWrappingZoneMethod == null) {
@@ -148,7 +155,7 @@ public class PortalStitcher {
                 
                 invokeAddWrappingZoneMethod.invoke(null, level, xMin, zMin, xMax, zMax, true, feedbackConsumer);
                 
-                // Let's query wrapping zones again to see if they got added successfully
+                // Query wrapping zones again to verify creation
                 List<?> newZones = (List<?>) getWrappingZonesMethod.invoke(null, level);
                 LOGGER.info("[GeoLock] Wrapping zones count after creation: {}", newZones == null ? "null" : newZones.size());
                 if (newZones != null && !newZones.isEmpty()) {
