@@ -111,9 +111,6 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
-    // Tectonic v3.0.22-neoforge-21.1
-    implementation "maven.modrinth:tectonic:3.0.22-neoforge-21.1"
-
     // Sodium mc1.21.1-0.6.13-neoforge
     implementation "maven.modrinth:sodium:mc1.21.1-0.6.13-neoforge"
 
